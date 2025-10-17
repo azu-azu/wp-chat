@@ -1,0 +1,28 @@
+# OS / Editor
+.DS_Store
+.vscode/
+.idea/
+.cursor/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.env
+.python-version
+
+# App data (generated or large)
+data/
+.state/
+
+# Caches / logs
+*.log
+*.cache
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+coverage.xml
+.coverage*
+

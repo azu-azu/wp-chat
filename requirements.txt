@@ -1,0 +1,10 @@
+requests
+beautifulsoup4
+readability-lxml
+tqdm
+faiss-cpu
+sentence-transformers
+fastapi
+uvicorn
+python-dotenv
+
