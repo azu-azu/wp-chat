@@ -1,0 +1,11 @@
+{
+  "enabled": true,
+  "rollout_percentage": 0.5,
+  "user_seed": "default_seed",
+  "emergency_stop": false,
+  "auto_rollback_threshold": 0.05,
+  "latency_threshold_ms": 2000,
+  "min_requests_for_rollback": 100,
+  "last_updated": 1760786966.3105059,
+  "updated_by": "test"
+}

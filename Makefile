@@ -46,7 +46,68 @@ slo-test:
 rate-limit-test:
 	. .venv/bin/activate && python -c "import sys; sys.path.append('src'); from src.rate_limit import rate_limiter; allowed, info = rate_limiter.is_allowed('test_client', 5, 60); print('Rate limit test:', 'ALLOWED' if allowed else 'BLOCKED'); print('Rate info:', info); print('Global stats:', rate_limiter.get_global_stats())"
 
+canary-test:
+	. .venv/bin/activate && python -c "import sys; sys.path.append('src'); from src.canary_manager import canary_manager; print('=== カナリア機能テスト ==='); print('初期状態:', canary_manager.get_config()); canary_manager.enable_canary(0.1, 'test'); print('10%有効化後:', canary_manager.get_config()); print('ユーザー1 rerank有効:', canary_manager.is_rerank_enabled_for_user('user1')); print('ユーザー2 rerank有効:', canary_manager.is_rerank_enabled_for_user('user2')); canary_manager.update_rollout_percentage(0.5, 'test'); print('50%更新後:', canary_manager.get_config()); canary_manager.emergency_stop('test'); print('緊急停止後:', canary_manager.get_config()); canary_manager.clear_emergency_stop('test'); print('緊急停止解除後:', canary_manager.get_config())"
+
+# Canary CLI commands
+canary-status:
+	. .venv/bin/activate && python src/canary_cli.py status
+
+canary-enable:
+	. .venv/bin/activate && python src/canary_cli.py enable 0.1
+
+canary-disable:
+	. .venv/bin/activate && python src/canary_cli.py disable
+
+canary-update:
+	. .venv/bin/activate && python src/canary_cli.py update 0.25
+
+canary-test-users:
+	. .venv/bin/activate && python src/canary_cli.py test user1 user2 user3 user4 user5
+
+# Incident Response Commands
+incident-status:
+	. .venv/bin/activate && python src/incident_cli.py status
+
+incident-active:
+	. .venv/bin/activate && python src/incident_cli.py active
+
+incident-detect:
+	. .venv/bin/activate && python src/incident_cli.py detect high_latency high "High latency detected"
+
+incident-auto-detect:
+	. .venv/bin/activate && python src/incident_cli.py auto-detect
+
+incident-emergency-ref:
+	. .venv/bin/activate && python src/incident_cli.py emergency-ref
+
+runbook-test:
+	. .venv/bin/activate && python -c "import sys; sys.path.append('src'); from src.runbook import runbook, IncidentType, Severity; print('=== Runbook機能テスト ==='); incident = runbook.detect_incident(IncidentType.HIGH_LATENCY, Severity.HIGH, 'Test incident'); print('Incident detected:', incident.incident_id); procedures = runbook.get_emergency_procedures(IncidentType.HIGH_LATENCY); print('Procedures available:', len(procedures)); print('Summary:', runbook.get_incident_summary())"
+
+# Backup Management Commands
+backup-status:
+	. .venv/bin/activate && python src/backup_cli.py status
+
+backup-list:
+	. .venv/bin/activate && python src/backup_cli.py list
+
+backup-create:
+	. .venv/bin/activate && python src/backup_cli.py create --type full --description "Manual backup"
+
+backup-create-index:
+	. .venv/bin/activate && python src/backup_cli.py create --type index --description "Index backup"
+
+backup-cleanup:
+	. .venv/bin/activate && python src/backup_cli.py cleanup
+
+backup-schedule:
+	. .venv/bin/activate && python src/backup_cli.py schedule
+
+backup-report:
+	. .venv/bin/activate && python src/backup_cli.py report
+
+backup-test:
+	. .venv/bin/activate && python -c "import sys; sys.path.append('src'); from src.backup_manager import backup_manager; print('=== バックアップ機能テスト ==='); print('Config:', backup_manager.config); stats = backup_manager.get_backup_statistics(); print('Statistics:', stats); print('Available backups:', len(backup_manager.list_backups()))"
+
 logs-dir:
 	mkdir -p logs
-
-
