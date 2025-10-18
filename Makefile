@@ -13,4 +13,7 @@ bm25:
 hybrid:
 	. .venv/bin/activate && python src/search_hybrid.py --query "お問い合わせ" --topk 5
 
+config-test:
+	. .venv/bin/activate && python -c "from src.config import get_config_value; print('Config test:', get_config_value('hybrid.alpha'))"
+
 

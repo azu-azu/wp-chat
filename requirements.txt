@@ -8,4 +8,5 @@ fastapi
 uvicorn
 python-dotenv
 scikit-learn
+PyYAML
 
