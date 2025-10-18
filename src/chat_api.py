@@ -1,5 +1,6 @@
 import os, json, numpy as np, faiss
-from fastapi import FastAPI, HTTPException
+from datetime import datetime
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, conint
 from sentence_transformers import SentenceTransformer
@@ -8,8 +9,12 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from scipy.sparse import load_npz
 import joblib
 from .rerank import CrossEncoderReranker, mmr_diversify, rerank_with_ce, dedup_by_article, Candidate
-from .highlight import highlight_results
+from .highlight import highlight_results, get_highlight_info
 from .config import get_config_value
+from .ab_logging import ab_logger, ab_logging_middleware, get_ab_stats
+from .model_manager import get_device_status
+from .cache import cache_manager, cache_search_results, get_cached_search_results
+from .rate_limit import check_rate_limit, get_rate_limit_headers, rate_limiter
 
 IDX = "data/index/wp.faiss"
 META = "data/index/wp.meta.json"
@@ -25,6 +30,7 @@ class AskReq(BaseModel):
     mode: str = "hybrid"  # dense|bm25|hybrid
     rerank: bool = False
     highlight: bool = True  # Enable query highlighting
+    use_morphology: bool = True  # Use morphological analysis for Japanese
 
 app = FastAPI()
 app.add_middleware(
@@ -34,6 +40,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Add A/B logging middleware
+app.middleware("http")(ab_logging_middleware)
 model = SentenceTransformer(MODEL)
 index = faiss.read_index(IDX)
 meta = json.load(open(META, "r", encoding="utf-8"))
@@ -118,9 +127,32 @@ def _search_hybrid_with_rerank(q: str, topk: int, wd=0.6, wb=0.4, rerank=False, 
     return results, rerank_status
 
 @app.get("/search")
-def search(q: str, topk: conint(ge=1, le=TOPK_MAX) = TOPK_DEFAULT, mode: str = "hybrid", rerank: bool = False, highlight: bool = True):
+def search(q: str, topk: conint(ge=1, le=TOPK_MAX) = TOPK_DEFAULT, mode: str = "hybrid", rerank: bool = False, highlight: bool = True, request: Request = None):
     if not q.strip():
         raise HTTPException(400, "q is empty")
+
+    # Rate limiting check
+    if get_config_value("api.rate_limit.enabled", True):
+        max_requests = get_config_value("api.rate_limit.max_requests", 100)
+        window_seconds = get_config_value("api.rate_limit.window_seconds", 3600)
+
+        is_allowed, rate_info = check_rate_limit(request, max_requests, window_seconds)
+        if not is_allowed:
+            headers = get_rate_limit_headers(rate_info)
+            raise HTTPException(429, "Rate limit exceeded", headers=headers)
+
+    # Check cache first
+    if get_config_value("api.cache.enabled", True):
+        cached_results = get_cached_search_results(q)
+        if cached_results is not None:
+            return JSONResponse({
+                "query": q,
+                "mode": mode,
+                "rerank": False,
+                "highlight": highlight,
+                "cached": True,
+                "contexts": cached_results
+            })
     if mode == "dense":
         hits = _search_dense(q, topk)
         rerank_status = False
@@ -158,7 +190,28 @@ def search(q: str, topk: conint(ge=1, le=TOPK_MAX) = TOPK_DEFAULT, mode: str = "
 
     # Apply highlighting if requested
     if highlight:
-        out = highlight_results(out, q, get_config_value("api.snippet_length", 400))
+        out = highlight_results(out, q, get_config_value("api.snippet_length", 400),
+                               use_morphology=req.use_morphology)
+
+    # Log A/B metrics (additional logging for detailed analysis)
+    try:
+        ab_logger.log_search_metrics(
+            query=q,
+            rerank_enabled=rerank_status,
+            latency_ms=0,  # Will be updated by middleware
+            result_count=len(out),
+            mode=mode,
+            topk=topk,
+            user_agent=request.headers.get("user-agent") if request else None,
+            ip_address=request.client.host if request and request.client else None
+        )
+    except Exception as e:
+        pass  # Don't fail the request if logging fails
+
+    # Cache results if caching is enabled
+    if get_config_value("api.cache.enabled", True):
+        search_ttl = get_config_value("api.cache.search_ttl", 1800)
+        cache_search_results(q, out, search_ttl)
 
     return JSONResponse({"q": q, "mode": mode, "rerank": rerank_status, "highlight": highlight, "contexts": out})
 
@@ -208,6 +261,70 @@ def ask(req: AskReq):
 
     # Apply highlighting if requested
     if req.highlight:
-        hits = highlight_results(hits, q, get_config_value("api.snippet_length", 400))
+        hits = highlight_results(hits, q, get_config_value("api.snippet_length", 400),
+                                use_morphology=req.use_morphology)
 
     return JSONResponse({"question": q, "mode": mode, "rerank": rerank_status, "highlight": req.highlight, "contexts": hits})
+
+@app.get("/stats/ab")
+def get_ab_statistics(days: int = 7):
+    """Get A/B testing statistics"""
+    stats = get_ab_stats(days)
+    return JSONResponse(stats)
+
+@app.get("/stats/health")
+def health_check():
+    """Health check endpoint"""
+    return JSONResponse({
+        "status": "healthy",
+        "timestamp": datetime.now().isoformat(),
+        "version": "1.0.0"
+    })
+
+@app.get("/stats/highlight")
+def get_highlight_info_endpoint(query: str):
+    """Get highlighting information for a query"""
+    try:
+        info = get_highlight_info(query)
+        return JSONResponse({
+            "query": query,
+            "morphology_available": info["morphology_available"],
+            "extracted_keywords": info["extracted_keywords"],
+            "morphology_keywords": info["morphology_keywords"],
+            "basic_keywords": info["basic_keywords"]
+        })
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+@app.get("/stats/cache")
+def get_cache_stats():
+    """Get cache statistics"""
+    try:
+        stats = cache_manager.get_stats()
+        return JSONResponse(stats)
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+@app.get("/stats/rate-limit")
+def get_rate_limit_stats():
+    """Get rate limiting statistics"""
+    try:
+        stats = rate_limiter.get_global_stats()
+        return JSONResponse(stats)
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+@app.post("/admin/cache/clear")
+def clear_cache():
+    """Clear all cache entries (admin endpoint)"""
+    try:
+        success = cache_manager.clear()
+        return JSONResponse({"success": success, "message": "Cache cleared"})
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+@app.get("/stats/device")
+def device_status():
+    """Get device and model information"""
+    device_info = get_device_status()
+    return JSONResponse(device_info)

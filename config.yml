@@ -14,16 +14,54 @@ mmr:
 
 # Cross-Encoder Reranker
 reranker:
-  model_name: "cross-encoder/ms-marco-MiniLM-L-6-v2"
+  # Model selection strategy
+  auto_detect: true              # Automatically detect CPU/GPU and select model
+  fallback_to_cpu: true          # Fallback to CPU model if GPU fails
+
+  # Available models
+  models:
+    cpu: "cross-encoder/ms-marco-MiniLM-L-6-v2"      # Lightweight CPU model
+    gpu: "cross-encoder/ms-marco-MiniLM-L-12-v2"     # More accurate GPU model
+    fallback: "cross-encoder/ms-marco-MiniLM-L-6-v2" # Fallback model
+
+  # Performance settings
   batch_size: 16         # Batch size for efficient scoring
   timeout_sec: 5.0       # Timeout threshold for fallback
-  device: null           # Device (null = auto, "cpu", "cuda")
+  device: null           # Device override (null = auto, "cpu", "cuda", "mps")
+
+  # Composite scoring experiments
+  composite_scoring:
+    enabled: true        # Enable composite scoring experiments
+    alpha: 0.8          # CE weight (hybrid weight = 1 - alpha)
+    strategies:
+      - name: "ce_only"     # Pure Cross-Encoder scoring
+        alpha: 1.0
+      - name: "hybrid_only" # Pure Hybrid scoring
+        alpha: 0.0
+      - name: "balanced"    # Balanced combination
+        alpha: 0.5
+      - name: "ce_heavy"    # CE-heavy combination
+        alpha: 0.8
 
 # API Configuration
 api:
   topk_default: 5        # Default number of results
   topk_max: 10          # Maximum number of results
-  snippet_length: 400   # Snippet character limit
+  snippet_length: 400   # Maximum snippet length for highlighting
+
+  # Rate limiting configuration
+  rate_limit:
+    enabled: true       # Enable rate limiting
+    max_requests: 100   # Max requests per window
+    window_seconds: 3600 # Time window (1 hour)
+    burst_limit: 20     # Burst requests allowed
+
+  # Caching configuration
+  cache:
+    enabled: true       # Enable caching
+    search_ttl: 1800   # Search results TTL (30 minutes)
+    embedding_ttl: 7200 # Embeddings TTL (2 hours)
+    max_size_mb: 100   # Maximum cache size
 
 # Evaluation Configuration
 eval:

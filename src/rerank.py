@@ -7,6 +7,8 @@ from functools import lru_cache
 
 import numpy as np
 from sentence_transformers import CrossEncoder
+from model_manager import get_optimal_model_config, get_device_status
+from composite_scoring import calculate_final_score, get_scoring_strategies
 
 @dataclass
 class Candidate:
@@ -18,11 +20,30 @@ class Candidate:
     meta: dict
 
 class CrossEncoderReranker:
-    def __init__(self, model_name: str = "cross-encoder/ms-marco-MiniLM-L-6-v2",
-                device: Optional[str] = None,
-                batch_size: int = 16):
-        self.model = CrossEncoder(model_name, device=device)
+    def __init__(self, model_name: str = None, device: Optional[str] = None, batch_size: int = None):
+        # Use model manager for optimal configuration
+        if model_name is None or device is None or batch_size is None:
+            config = get_optimal_model_config()
+            model_name = model_name or config["model_name"]
+            device = device or config["device"]
+            batch_size = batch_size or config["batch_size"]
+
+        self.model_name = model_name
+        self.device = device
         self.batch_size = batch_size
+
+        try:
+            self.model = CrossEncoder(model_name, device=device)
+            print(f"✅ CrossEncoder loaded: {model_name} on {device}")
+        except Exception as e:
+            print(f"❌ Failed to load {model_name} on {device}: {e}")
+            # Fallback to CPU model
+            fallback_config = get_optimal_model_config()
+            fallback_model = fallback_config["models"]["fallback"]
+            print(f"🔄 Falling back to: {fallback_model} on cpu")
+            self.model = CrossEncoder(fallback_model, device="cpu")
+            self.model_name = fallback_model
+            self.device = "cpu"
 
     @staticmethod
     def _sigmoid(x: np.ndarray) -> np.ndarray:
@@ -42,6 +63,14 @@ class CrossEncoderReranker:
             s = self._sigmoid(np.array(s))  # 0-1
             scores.extend(s.tolist())
         return scores
+
+    def get_model_info(self) -> dict:
+        """Get model information for debugging"""
+        return {
+            "model_name": self.model_name,
+            "device": self.device,
+            "batch_size": self.batch_size
+        }
 
 def mmr_diversify(query_emb: np.ndarray,
                 candidates: List[Candidate],
@@ -82,10 +111,11 @@ def mmr_diversify(query_emb: np.ndarray,
     return selected
 
 def rerank_with_ce(query: str,
-                diversified: List[Candidate],
-                ce: CrossEncoderReranker,
-                topk: int = 10,
-                timeout_sec: float = 5.0) -> List[Candidate]:
+                   diversified: List[Candidate],
+                   ce: CrossEncoderReranker,
+                   topk: int = 10,
+                   timeout_sec: float = 5.0,
+                   scoring_strategy: str = "default") -> List[Candidate]:
     if not diversified:
         return []
 
@@ -99,11 +129,17 @@ def rerank_with_ce(query: str,
             # フォールバック：hybrid順
             return sorted(diversified, key=lambda c: c.hybrid_score, reverse=True)[:topk]
 
+        # Apply composite scoring
         for c, s in zip(diversified, ce_scores):
             c.meta["ce_score"] = float(s)
+            # Calculate composite score
+            c.meta["composite_score"] = calculate_final_score(
+                c.hybrid_score, float(s), scoring_strategy
+            )
+            c.meta["scoring_strategy"] = scoring_strategy
 
-        # 最終はCEスコア優先（必要なら線形合成も可）
-        ranked = sorted(diversified, key=lambda c: c.meta["ce_score"], reverse=True)
+        # 最終は合成スコア優先
+        ranked = sorted(diversified, key=lambda c: c.meta["composite_score"], reverse=True)
         return ranked[:topk]
 
     except Exception as e:

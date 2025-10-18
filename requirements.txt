@@ -9,4 +9,7 @@ uvicorn
 python-dotenv
 scikit-learn
 PyYAML
+janome
+slowapi
+redis
 
