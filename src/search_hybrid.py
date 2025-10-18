@@ -3,9 +3,9 @@ from sentence_transformers import SentenceTransformer
 from sklearn.feature_extraction.text import TfidfVectorizer
 from scipy.sparse import load_npz
 import joblib
-from rerank import CrossEncoderReranker, mmr_diversify, rerank_with_ce, dedup_by_article, Candidate
-from config import get_config_value
-from composite_scoring import get_scoring_strategies, experiment_scoring
+from .rerank import CrossEncoderReranker, mmr_diversify, rerank_with_ce, dedup_by_article, Candidate
+from .config import get_config_value
+from .composite_scoring import get_scoring_strategies, experiment_scoring
 
 IDX = "data/index/wp.faiss"
 META = "data/index/wp.meta.json"

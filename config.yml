@@ -63,6 +63,21 @@ api:
     embedding_ttl: 7200 # Embeddings TTL (2 hours)
     max_size_mb: 100   # Maximum cache size
 
+  # SLO monitoring configuration
+  slo:
+    enabled: true      # Enable SLO monitoring
+    targets:
+      search:
+        p95_latency_ms: 800    # Target p95 latency
+        success_rate: 0.995   # Target success rate (99.5%)
+        window_minutes: 5     # Monitoring window
+        alert_threshold: 0.9  # Alert threshold
+      ask:
+        p95_latency_ms: 1000   # Target p95 latency
+        success_rate: 0.99     # Target success rate (99%)
+        window_minutes: 5      # Monitoring window
+        alert_threshold: 0.9   # Alert threshold
+
 # Evaluation Configuration
 eval:
   default_k: 5          # Default evaluation k

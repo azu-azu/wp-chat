@@ -7,8 +7,8 @@ from functools import lru_cache
 
 import numpy as np
 from sentence_transformers import CrossEncoder
-from model_manager import get_optimal_model_config, get_device_status
-from composite_scoring import calculate_final_score, get_scoring_strategies
+from .model_manager import get_optimal_model_config, get_device_status
+from .composite_scoring import calculate_final_score, get_scoring_strategies
 
 @dataclass
 class Candidate:
