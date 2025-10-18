@@ -78,6 +78,32 @@ api:
         window_minutes: 5      # Monitoring window
         alert_threshold: 0.9   # Alert threshold
 
+  # Canary deployment configuration
+  canary:
+    enabled: false     # Enable canary deployment
+    rollout_percentage: 0.0  # Initial rollout percentage (0.0 to 1.0)
+    user_seed: "canary_seed_2024"  # Seed for consistent user assignment
+    auto_rollback_threshold: 0.05  # Auto-rollback if error rate exceeds 5%
+    latency_threshold_ms: 2000     # Auto-rollback if latency exceeds 2s
+    min_requests_for_rollback: 100 # Minimum requests before considering rollback
+
+  # Backup and restore configuration
+  backup:
+    enabled: true      # Enable backup system
+    schedule:
+      full_backup_days: 7      # Full backup every 7 days
+      incremental_hours: 24     # Incremental backup every 24 hours
+      retention_days: 30        # Keep backups for 30 days
+      max_backups: 10           # Maximum number of backups to keep
+    paths:
+      index: "data/index/"      # Index files to backup
+      cache: "logs/cache/"      # Cache files to backup
+      config: "config.yml"      # Configuration file to backup
+      logs: "logs/"             # Log files to backup
+    compression: true           # Enable compression
+    verification: true          # Enable backup verification
+    auto_cleanup: true          # Enable automatic cleanup
+
 # Evaluation Configuration
 eval:
   default_k: 5          # Default evaluation k

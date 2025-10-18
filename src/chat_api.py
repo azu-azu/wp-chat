@@ -1,5 +1,6 @@
 import os, json, numpy as np, faiss
 from datetime import datetime
+from typing import List
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, conint
@@ -17,6 +18,13 @@ from .cache import cache_manager, cache_search_results, get_cached_search_result
 from .rate_limit import check_rate_limit, get_rate_limit_headers, rate_limiter
 from .slo_monitoring import record_api_metric, get_slo_status, get_metrics_summary
 from .dashboard import get_dashboard_data, get_ab_summary, get_cache_summary, get_performance_summary
+from .canary_manager import (is_rerank_enabled_for_user, update_canary_rollout, enable_canary,
+                           disable_canary, emergency_stop_canary, clear_emergency_stop, get_canary_status)
+from .runbook import (detect_incident, get_emergency_procedures, execute_emergency_action,
+                     resolve_incident, get_active_incidents, get_incident_summary,
+                     auto_detect_incidents, IncidentType, Severity, EmergencyAction)
+from .backup_manager import (create_backup, restore_backup, list_backups, get_backup_statistics,
+                           cleanup_old_backups, schedule_backup, BackupInfo, RestoreInfo)
 
 IDX = "data/index/wp.faiss"
 META = "data/index/wp.meta.json"
@@ -129,7 +137,7 @@ def _search_hybrid_with_rerank(q: str, topk: int, wd=0.6, wb=0.4, rerank=False, 
     return results, rerank_status
 
 @app.get("/search")
-def search(q: str, topk: conint(ge=1, le=TOPK_MAX) = TOPK_DEFAULT, mode: str = "hybrid", rerank: bool = False, highlight: bool = True, request: Request = None):
+def search(q: str, topk: conint(ge=1, le=TOPK_MAX) = TOPK_DEFAULT, mode: str = "hybrid", rerank: bool = False, highlight: bool = True, user_id: str = "anonymous", request: Request = None):
     start_time = time.time()
     status_code = 200
     cache_hit = False
@@ -163,6 +171,7 @@ def search(q: str, topk: conint(ge=1, le=TOPK_MAX) = TOPK_DEFAULT, mode: str = "
                     "cached": True,
                     "contexts": cached_results
                 })
+
         if mode == "dense":
             hits = _search_dense(q, topk)
             rerank_status = False
@@ -170,7 +179,12 @@ def search(q: str, topk: conint(ge=1, le=TOPK_MAX) = TOPK_DEFAULT, mode: str = "
             hits = _search_bm25(q, topk)
             rerank_status = False
         else:
-            hits, rerank_status = _search_hybrid_with_rerank(q, topk, rerank=rerank)
+            # Check canary deployment for rerank decision
+            canary_rerank_enabled = is_rerank_enabled_for_user(user_id)
+            # Use canary decision if rerank is not explicitly disabled
+            final_rerank = rerank and canary_rerank_enabled
+            hits, rerank_status = _search_hybrid_with_rerank(q, topk, rerank=final_rerank)
+
         out = []
         for rank, hit in enumerate(hits, 1):
             if len(hit) == 3:  # (idx, hybrid_score, ce_score)
@@ -183,20 +197,20 @@ def search(q: str, topk: conint(ge=1, le=TOPK_MAX) = TOPK_DEFAULT, mode: str = "
                 continue
             m = meta[idx]
 
-        result_item = {
-            "rank": rank,
-            "hybrid_score": hybrid_sc,
-            "post_id": m["post_id"],
-            "chunk_id": m["chunk_id"],
-            "title": m["title"],
-            "url": m["url"]
-        }
+            result_item = {
+                "rank": rank,
+                "hybrid_score": hybrid_sc,
+                "post_id": m["post_id"],
+                "chunk_id": m["chunk_id"],
+                "title": m["title"],
+                "url": m["url"]
+            }
 
-        # Add ce_score if available (for A/B analysis)
-        if ce_sc is not None:
-            result_item["ce_score"] = ce_sc
+            # Add ce_score if available (for A/B analysis)
+            if ce_sc is not None:
+                result_item["ce_score"] = ce_sc
 
-        out.append(result_item)
+            out.append(result_item)
 
         # Apply highlighting if requested
         if highlight:
@@ -222,7 +236,18 @@ def search(q: str, topk: conint(ge=1, le=TOPK_MAX) = TOPK_DEFAULT, mode: str = "
             search_ttl = get_config_value("api.cache.search_ttl", 1800)
             cache_search_results(q, out, search_ttl)
 
-        return JSONResponse({"q": q, "mode": mode, "rerank": rerank_status, "highlight": highlight, "contexts": out})
+        return JSONResponse({
+            "q": q,
+            "mode": mode,
+            "rerank": rerank_status,
+            "highlight": highlight,
+            "contexts": out,
+            "canary": {
+                "user_id": user_id,
+                "rerank_enabled": canary_rerank_enabled,
+                "rollout_percentage": get_canary_status().get("config", {}).get("rollout_percentage", 0.0)
+            }
+        })
 
     except HTTPException as e:
         status_code = e.status_code
@@ -408,6 +433,302 @@ def get_metrics_statistics(hours: int = 24):
     try:
         summary = get_metrics_summary(hours)
         return JSONResponse(summary)
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+# Canary Management Endpoints
+@app.get("/admin/canary/status")
+def get_canary_status_endpoint():
+    """Get current canary deployment status"""
+    try:
+        status = get_canary_status()
+        return JSONResponse(status)
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+@app.post("/admin/canary/rollout")
+def update_canary_rollout_endpoint(percentage: float, updated_by: str = "api"):
+    """Update canary rollout percentage"""
+    try:
+        if not 0.0 <= percentage <= 1.0:
+            raise HTTPException(400, "Percentage must be between 0.0 and 1.0")
+
+        update_canary_rollout(percentage, updated_by)
+        return JSONResponse({
+            "message": f"Canary rollout updated to {percentage:.1%}",
+            "status": "success"
+        })
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+@app.post("/admin/canary/enable")
+def enable_canary_endpoint(percentage: float = 0.1, updated_by: str = "api"):
+    """Enable canary deployment"""
+    try:
+        if not 0.0 <= percentage <= 1.0:
+            raise HTTPException(400, "Percentage must be between 0.0 and 1.0")
+
+        enable_canary(percentage, updated_by)
+        return JSONResponse({
+            "message": f"Canary deployment enabled at {percentage:.1%}",
+            "status": "success"
+        })
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+@app.post("/admin/canary/disable")
+def disable_canary_endpoint(updated_by: str = "api"):
+    """Disable canary deployment"""
+    try:
+        disable_canary(updated_by)
+        return JSONResponse({
+            "message": "Canary deployment disabled",
+            "status": "success"
+        })
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+@app.post("/admin/canary/emergency-stop")
+def emergency_stop_canary_endpoint(updated_by: str = "api"):
+    """Emergency stop canary deployment"""
+    try:
+        emergency_stop_canary(updated_by)
+        return JSONResponse({
+            "message": "Emergency stop activated - rerank disabled for all users",
+            "status": "success"
+        })
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+@app.post("/admin/canary/clear-emergency")
+def clear_emergency_stop_endpoint(updated_by: str = "api"):
+    """Clear emergency stop"""
+    try:
+        clear_emergency_stop(updated_by)
+        return JSONResponse({
+            "message": "Emergency stop cleared",
+            "status": "success"
+        })
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+# Incident Response Runbook Endpoints
+@app.get("/admin/incidents/status")
+def get_incident_status():
+    """Get current incident status and summary"""
+    try:
+        summary = get_incident_summary()
+        return JSONResponse(summary)
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+@app.get("/admin/incidents/active")
+def get_active_incidents_endpoint():
+    """Get all active incidents"""
+    try:
+        incidents = get_active_incidents()
+        return JSONResponse({
+            "active_incidents": [incident.__dict__ for incident in incidents]
+        })
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+@app.post("/admin/incidents/detect")
+def detect_incident_endpoint(incident_type: str, severity: str, description: str = "",
+                           affected_components: List[str] = None):
+    """Manually detect an incident"""
+    try:
+        incident_type_enum = IncidentType(incident_type)
+        severity_enum = Severity(severity)
+
+        incident = detect_incident(
+            incident_type=incident_type_enum,
+            severity=severity_enum,
+            description=description,
+            affected_components=affected_components or []
+        )
+
+        return JSONResponse({
+            "message": f"Incident {incident.incident_id} detected",
+            "incident": incident.__dict__
+        })
+    except ValueError as e:
+        return JSONResponse({"error": f"Invalid incident type or severity: {e}"}, status_code=400)
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+@app.get("/admin/incidents/{incident_id}/procedures")
+def get_incident_procedures(incident_id: str):
+    """Get emergency procedures for an incident"""
+    try:
+        # Find incident
+        incidents = get_active_incidents()
+        incident = next((inc for inc in incidents if inc.incident_id == incident_id), None)
+
+        if not incident:
+            return JSONResponse({"error": "Incident not found"}, status_code=404)
+
+        procedures = get_emergency_procedures(incident.incident_type)
+
+        return JSONResponse({
+            "incident_id": incident_id,
+            "incident_type": incident.incident_type.value,
+            "procedures": [procedure.__dict__ for procedure in procedures]
+        })
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+@app.post("/admin/incidents/{incident_id}/execute")
+def execute_incident_action(incident_id: str, action_id: str, confirm: bool = False):
+    """Execute an emergency action for an incident"""
+    try:
+        # Find incident
+        incidents = get_active_incidents()
+        incident = next((inc for inc in incidents if inc.incident_id == incident_id), None)
+
+        if not incident:
+            return JSONResponse({"error": "Incident not found"}, status_code=404)
+
+        # Get procedures
+        procedures = get_emergency_procedures(incident.incident_type)
+        action = next((proc for proc in procedures if proc.action_id == action_id), None)
+
+        if not action:
+            return JSONResponse({"error": "Action not found"}, status_code=404)
+
+        # Execute action
+        success, output = execute_emergency_action(action, incident, confirm)
+
+        return JSONResponse({
+            "success": success,
+            "output": output,
+            "action": action.__dict__
+        })
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+@app.post("/admin/incidents/{incident_id}/resolve")
+def resolve_incident_endpoint(incident_id: str, resolution_notes: str = "", assigned_to: str = ""):
+    """Mark an incident as resolved"""
+    try:
+        success = resolve_incident(incident_id, resolution_notes, assigned_to)
+
+        if success:
+            return JSONResponse({
+                "message": f"Incident {incident_id} resolved",
+                "status": "success"
+            })
+        else:
+            return JSONResponse({"error": "Incident not found"}, status_code=404)
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+@app.post("/admin/incidents/auto-detect")
+def auto_detect_incidents_endpoint():
+    """Automatically detect incidents from SLO status"""
+    try:
+        slo_status = get_slo_status()
+        detected_incidents = auto_detect_incidents(slo_status)
+
+        return JSONResponse({
+            "message": f"Detected {len(detected_incidents)} incidents",
+            "incidents": [incident.__dict__ for incident in detected_incidents]
+        })
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+# Backup Management Endpoints
+@app.get("/admin/backup/status")
+def get_backup_status():
+    """Get backup status and statistics"""
+    try:
+        stats = get_backup_statistics()
+        return JSONResponse(stats)
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+@app.get("/admin/backup/list")
+def list_backups_endpoint(backup_type: str = None):
+    """List available backups"""
+    try:
+        backups = list_backups(backup_type)
+        return JSONResponse({
+            "backups": [backup.__dict__ for backup in backups]
+        })
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+@app.post("/admin/backup/create")
+def create_backup_endpoint(backup_type: str = "full", description: str = ""):
+    """Create a new backup"""
+    try:
+        if backup_type not in ["full", "incremental", "index", "cache", "config"]:
+            raise HTTPException(400, "Invalid backup type")
+
+        backup = create_backup(backup_type, description)
+        return JSONResponse({
+            "message": f"Backup created: {backup.backup_id}",
+            "backup": backup.__dict__
+        })
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+@app.post("/admin/backup/restore")
+def restore_backup_endpoint(backup_id: str, target_path: str = None, verify: bool = True):
+    """Restore from backup"""
+    try:
+        restore = restore_backup(backup_id, target_path, verify)
+        return JSONResponse({
+            "message": f"Restore completed: {restore.restore_id}",
+            "restore": restore.__dict__
+        })
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+@app.delete("/admin/backup/{backup_id}")
+def delete_backup_endpoint(backup_id: str):
+    """Delete a backup"""
+    try:
+        from .backup_manager import backup_manager
+        success = backup_manager.delete_backup(backup_id)
+
+        if success:
+            return JSONResponse({
+                "message": f"Backup deleted: {backup_id}",
+                "status": "success"
+            })
+        else:
+            return JSONResponse({"error": "Backup not found"}, status_code=404)
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+@app.post("/admin/backup/cleanup")
+def cleanup_backups_endpoint():
+    """Clean up old backups"""
+    try:
+        deleted_count = cleanup_old_backups()
+        return JSONResponse({
+            "message": f"Cleaned up {deleted_count} old backups",
+            "deleted_count": deleted_count
+        })
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+@app.post("/admin/backup/schedule")
+def schedule_backup_endpoint():
+    """Schedule automatic backup"""
+    try:
+        backup = schedule_backup()
+        if backup:
+            return JSONResponse({
+                "message": f"Scheduled backup created: {backup.backup_id}",
+                "backup": backup.__dict__
+            })
+        else:
+            return JSONResponse({
+                "message": "No backup needed at this time",
+                "backup": None
+            })
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
 
