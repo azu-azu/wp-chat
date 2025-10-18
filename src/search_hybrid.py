@@ -5,6 +5,7 @@ from scipy.sparse import load_npz
 import joblib
 from rerank import CrossEncoderReranker, mmr_diversify, rerank_with_ce, dedup_by_article, Candidate
 from config import get_config_value
+from composite_scoring import get_scoring_strategies, experiment_scoring
 
 IDX = "data/index/wp.faiss"
 META = "data/index/wp.meta.json"
@@ -61,7 +62,7 @@ def hybrid_search(q: str, k_bm25: int = 100, k_dense: int = 100, alpha: float = 
 
     return candidates
 
-def main(q: str, topk: int, wd: float = None, wb: float = None, rerank: str = "none", mmr_lambda: float = None):
+def main(q: str, topk: int, wd: float = None, wb: float = None, rerank: str = "none", mmr_lambda: float = None, scoring_strategy: str = "default"):
     # Load configuration values
     if wd is None:
         wd = get_config_value("hybrid.alpha", 0.6)
@@ -85,7 +86,7 @@ def main(q: str, topk: int, wd: float = None, wb: float = None, rerank: str = "n
         batch_size = get_config_value("reranker.batch_size", 16)
         timeout_sec = get_config_value("reranker.timeout_sec", 5.0)
         ce = CrossEncoderReranker(model_name=model_name, batch_size=batch_size)
-        results = rerank_with_ce(q, diversified, ce, topk=topk, timeout_sec=timeout_sec)
+        results = rerank_with_ce(q, diversified, ce, topk=topk, timeout_sec=timeout_sec, scoring_strategy=scoring_strategy)
         rerank_status = True
     else:
         results = sorted(diversified, key=lambda c: c.hybrid_score, reverse=True)[:topk]
@@ -97,6 +98,9 @@ def main(q: str, topk: int, wd: float = None, wb: float = None, rerank: str = "n
         score_info = f"hybrid={cand.hybrid_score:.3f}"
         if rerank_status and "ce_score" in cand.meta:
             score_info += f" ce={cand.meta['ce_score']:.3f}"
+            if "composite_score" in cand.meta:
+                score_info += f" composite={cand.meta['composite_score']:.3f}"
+                score_info += f" ({cand.meta.get('scoring_strategy', 'default')})"
         print(f"[{rank}] {cand.meta['title']}  {score_info}\n{cand.meta['url']}\n{snip}\n")
 
 if __name__ == "__main__":
@@ -107,5 +111,6 @@ if __name__ == "__main__":
     ap.add_argument("--wb", type=float, default=None, help="BM25 weight (calculated as 1-wd)")
     ap.add_argument("--rerank", default="none", choices=["none", "ce", "ce:mini"])
     ap.add_argument("--mmr_lambda", type=float, default=None, help="MMR lambda (uses config.yml if not specified)")
+    ap.add_argument("--scoring-strategy", default="default", help="Scoring strategy for composite scoring")
     args = ap.parse_args()
-    main(args.query, args.topk, args.wd, args.wb, args.rerank, args.mmr_lambda)
+    main(args.query, args.topk, args.wd, args.wb, args.rerank, args.mmr_lambda, args.scoring_strategy)

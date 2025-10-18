@@ -1,0 +1,2 @@
+{"timestamp": "2025-10-18T19:25:24.048854", "event_type": "search", "query": "テストクエリ", "rerank_enabled": true, "mode": "hybrid", "topk": 5, "latency_ms": 150.5, "result_count": 5, "user_agent": null, "ip_address": null}
+{"timestamp": "2025-10-18T19:25:24.049058", "event_type": "search", "query": "テストクエリ2", "rerank_enabled": false, "mode": "hybrid", "topk": 5, "latency_ms": 80.2, "result_count": 3, "user_agent": null, "ip_address": null}
