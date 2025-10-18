@@ -7,4 +7,5 @@ sentence-transformers
 fastapi
 uvicorn
 python-dotenv
+scikit-learn
 
