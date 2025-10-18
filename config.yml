@@ -1,0 +1,31 @@
+# config.yml - Centralized configuration for wp-chat
+# Cross-Encoder Reranker and Hybrid Search parameters
+
+# Hybrid Search Configuration
+hybrid:
+  alpha: 0.6              # Dense weight (BM25 weight = 1 - alpha)
+  k_bm25: 100             # BM25 retrieval count
+  k_dense: 100            # Dense retrieval count
+
+# MMR Diversification
+mmr:
+  lambda: 0.7             # Diversity vs relevance tradeoff (0.0-1.0)
+  topn: 30               # Number of candidates for diversification
+
+# Cross-Encoder Reranker
+reranker:
+  model_name: "cross-encoder/ms-marco-MiniLM-L-6-v2"
+  batch_size: 16         # Batch size for efficient scoring
+  timeout_sec: 5.0       # Timeout threshold for fallback
+  device: null           # Device (null = auto, "cpu", "cuda")
+
+# API Configuration
+api:
+  topk_default: 5        # Default number of results
+  topk_max: 10          # Maximum number of results
+  snippet_length: 400   # Snippet character limit
+
+# Evaluation Configuration
+eval:
+  default_k: 5          # Default evaluation k
+  queries_file: "eval/queries.jsonl"

@@ -4,6 +4,7 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from scipy.sparse import load_npz
 import joblib
 from rerank import CrossEncoderReranker, mmr_diversify, rerank_with_ce, dedup_by_article, Candidate
+from config import get_config_value
 
 IDX = "data/index/wp.faiss"
 META = "data/index/wp.meta.json"
@@ -60,7 +61,13 @@ def hybrid_search(q: str, k_bm25: int = 100, k_dense: int = 100, alpha: float = 
 
     return candidates
 
-def main(q: str, topk: int, wd: float, wb: float, rerank: str = "none", mmr_lambda: float = 0.7):
+def main(q: str, topk: int, wd: float = None, wb: float = None, rerank: str = "none", mmr_lambda: float = None):
+    # Load configuration values
+    if wd is None:
+        wd = get_config_value("hybrid.alpha", 0.6)
+    if mmr_lambda is None:
+        mmr_lambda = get_config_value("mmr.lambda", 0.7)
+
     # 1) Hybrid search to get candidates
     candidates = hybrid_search(q, k_bm25=100, k_dense=100, alpha=wd)
 
@@ -74,9 +81,11 @@ def main(q: str, topk: int, wd: float, wb: float, rerank: str = "none", mmr_lamb
 
     # 4) Reranking
     if rerank.startswith("ce"):
-        model_name = "cross-encoder/ms-marco-MiniLM-L-6-v2"
-        ce = CrossEncoderReranker(model_name=model_name, batch_size=16)
-        results = rerank_with_ce(q, diversified, ce, topk=topk, timeout_sec=5.0)
+        model_name = get_config_value("reranker.model_name", "cross-encoder/ms-marco-MiniLM-L-6-v2")
+        batch_size = get_config_value("reranker.batch_size", 16)
+        timeout_sec = get_config_value("reranker.timeout_sec", 5.0)
+        ce = CrossEncoderReranker(model_name=model_name, batch_size=batch_size)
+        results = rerank_with_ce(q, diversified, ce, topk=topk, timeout_sec=timeout_sec)
         rerank_status = True
     else:
         results = sorted(diversified, key=lambda c: c.hybrid_score, reverse=True)[:topk]
@@ -93,10 +102,10 @@ def main(q: str, topk: int, wd: float, wb: float, rerank: str = "none", mmr_lamb
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--query", required=True)
-    ap.add_argument("--topk", type=int, default=5)
-    ap.add_argument("--wd", type=float, default=0.6)
-    ap.add_argument("--wb", type=float, default=0.4)
+    ap.add_argument("--topk", type=int, default=get_config_value("api.topk_default", 5))
+    ap.add_argument("--wd", type=float, default=None, help="Dense weight (uses config.yml if not specified)")
+    ap.add_argument("--wb", type=float, default=None, help="BM25 weight (calculated as 1-wd)")
     ap.add_argument("--rerank", default="none", choices=["none", "ce", "ce:mini"])
-    ap.add_argument("--mmr_lambda", type=float, default=0.7)
+    ap.add_argument("--mmr_lambda", type=float, default=None, help="MMR lambda (uses config.yml if not specified)")
     args = ap.parse_args()
     main(args.query, args.topk, args.wd, args.wb, args.rerank, args.mmr_lambda)
