@@ -7,6 +7,7 @@ from fastapi.responses import JSONResponse
 from sklearn.feature_extraction.text import TfidfVectorizer
 from scipy.sparse import load_npz
 import joblib
+from .rerank import CrossEncoderReranker, mmr_diversify, rerank_with_ce, dedup_by_article, Candidate
 
 IDX = "data/index/wp.faiss"
 META = "data/index/wp.meta.json"
@@ -20,6 +21,7 @@ class AskReq(BaseModel):
     question: str
     topk: conint(ge=1, le=TOPK_MAX) = TOPK_DEFAULT
     mode: str = "hybrid"  # dense|bm25|hybrid
+    rerank: bool = False
 
 app = FastAPI()
 app.add_middleware(
@@ -52,7 +54,8 @@ def _search_bm25(q: str, topk: int):
     ids = np.argsort(-scores)[:topk]
     return [(int(i), float(scores[i])) for i in ids]
 
-def _search_hybrid(q: str, topk: int, wd=0.6, wb=0.4):
+def _search_hybrid_with_rerank(q: str, topk: int, wd=0.6, wb=0.4, rerank=False, mmr_lambda=0.7):
+    """Enhanced hybrid search with optional reranking"""
     d = _search_dense(q, 200)
     b = _search_bm25(q, 200)
     ids = sorted(set([i for i, _ in d] + [i for i, _ in b]))
@@ -61,19 +64,67 @@ def _search_hybrid(q: str, topk: int, wd=0.6, wb=0.4):
     d_arr = np.array([d_map.get(i, 0.0) for i in ids], dtype="float32")
     b_arr = np.array([b_map.get(i, 0.0) for i in ids], dtype="float32")
     combo = wd * _minmax(d_arr) + wb * _minmax(b_arr)
-    order = np.argsort(-combo)[:topk]
-    return [(ids[j], float(combo[j])) for j in order]
+
+    # Create Candidate objects
+    candidates = []
+    for i, score in enumerate(combo):
+        if i < len(meta):
+            m = meta[i]
+            doc_emb = model.encode(m["chunk"], normalize_embeddings=True).astype("float32")
+            candidates.append(Candidate(
+                doc_id=m["url"],
+                chunk_id=m["chunk_id"],
+                text=m["chunk"],
+                hybrid_score=float(score),
+                emb=doc_emb,
+                meta={"post_id": m["post_id"], "title": m["title"], "url": m["url"]}
+            ))
+
+    # Article deduplication
+    candidates = dedup_by_article(candidates, limit_per_article=5)
+
+    # MMR diversification
+    q_emb = model.encode(q, normalize_embeddings=True).astype("float32")
+    diversified = mmr_diversify(q_emb, candidates, lambda_=mmr_lambda, topn=30)
+
+    # Reranking
+    if rerank:
+        try:
+            ce = CrossEncoderReranker("cross-encoder/ms-marco-MiniLM-L-6-v2", batch_size=16)
+            ranked = rerank_with_ce(q, diversified, ce, topk=topk, timeout_sec=5.0)
+            rerank_status = True
+        except Exception as e:
+            # Fallback to hybrid scores
+            ranked = sorted(diversified, key=lambda c: c.hybrid_score, reverse=True)[:topk]
+            rerank_status = False
+            print(f"Reranking failed: {e}")
+    else:
+        ranked = sorted(diversified, key=lambda c: c.hybrid_score, reverse=True)[:topk]
+        rerank_status = False
+
+    # Convert back to (idx, score) format
+    results = []
+    for cand in ranked:
+        # Find original index in meta
+        for i, m in enumerate(meta):
+            if m["url"] == cand.doc_id and m["chunk_id"] == cand.chunk_id:
+                results.append((i, cand.hybrid_score))
+                break
+
+    return results, rerank_status
 
 @app.get("/search")
-def search(q: str, topk: conint(ge=1, le=TOPK_MAX) = TOPK_DEFAULT, mode: str = "hybrid"):
+def search(q: str, topk: conint(ge=1, le=TOPK_MAX) = TOPK_DEFAULT, mode: str = "hybrid", rerank: bool = False):
     if not q.strip():
         raise HTTPException(400, "q is empty")
     if mode == "dense":
         hits = _search_dense(q, topk)
+        rerank_status = False
     elif mode == "bm25":
         hits = _search_bm25(q, topk)
+        rerank_status = False
     else:
-        hits = _search_hybrid(q, topk)
+        hits, rerank_status = _search_hybrid_with_rerank(q, topk, rerank=rerank)
     out = []
     for rank, (idx, sc) in enumerate(hits, 1):
         if idx < 0 or idx >= len(meta):
@@ -87,7 +138,7 @@ def search(q: str, topk: conint(ge=1, le=TOPK_MAX) = TOPK_DEFAULT, mode: str = "
             "title": m["title"],
             "url": m["url"]
         })
-    return JSONResponse({"q": q, "mode": mode, "contexts": out})
+    return JSONResponse({"q": q, "mode": mode, "rerank": rerank_status, "contexts": out})
 
 @app.post("/ask")
 def ask(req: AskReq):
@@ -97,10 +148,12 @@ def ask(req: AskReq):
     mode = req.mode
     if mode == "dense":
         pairs = _search_dense(q, req.topk)
+        rerank_status = False
     elif mode == "bm25":
         pairs = _search_bm25(q, req.topk)
+        rerank_status = False
     else:
-        pairs = _search_hybrid(q, req.topk)
+        pairs, rerank_status = _search_hybrid_with_rerank(q, req.topk, rerank=req.rerank)
     hits = []
     for rank, (idx, sc) in enumerate(pairs, 1):
         if idx < 0 or idx >= len(meta):
@@ -117,5 +170,4 @@ def ask(req: AskReq):
             "url": m["url"],
             "snippet": snip
         })
-    return JSONResponse({"question": q, "mode": mode, "contexts": hits})
-
+    return JSONResponse({"question": q, "mode": mode, "rerank": rerank_status, "contexts": hits})
