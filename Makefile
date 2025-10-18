@@ -37,6 +37,12 @@ scoring-strategies:
 cache-test:
 	. .venv/bin/activate && python -c "import sys; sys.path.append('src'); from src.cache import cache_manager, cache_search_results, get_cached_search_results; test_data = [{'title': 'Test', 'snippet': 'Test content'}]; cache_search_results('test query', test_data, 60); cached = get_cached_search_results('test query'); print('Cache test:', 'SUCCESS' if cached else 'FAILED'); print('Cache stats:', cache_manager.get_stats())"
 
+dashboard-test:
+	. .venv/bin/activate && python -c "import sys; sys.path.append('src'); from src.dashboard import get_dashboard_data, get_ab_summary, get_cache_summary; print('=== ダッシュボード機能テスト ==='); dashboard_data = get_dashboard_data(days=1, hours=6); print('Dashboard data keys:', list(dashboard_data.keys())); ab_summary = get_ab_summary(days=1); print('A/B summary:', ab_summary); cache_summary = get_cache_summary(hours=6); print('Cache summary:', cache_summary)"
+
+slo-test:
+	. .venv/bin/activate && python -c "import sys; sys.path.append('src'); from src.slo_monitoring import slo_monitor, record_api_metric; import time; record_api_metric('search', 500, 200, rerank_enabled=True, cache_hit=False); record_api_metric('search', 1200, 200, rerank_enabled=True, cache_hit=False); record_api_metric('search', 300, 500, rerank_enabled=False, cache_hit=True); print('SLO test metrics recorded'); print('SLO status:', slo_monitor.get_slo_status())"
+
 rate-limit-test:
 	. .venv/bin/activate && python -c "import sys; sys.path.append('src'); from src.rate_limit import rate_limiter; allowed, info = rate_limiter.is_allowed('test_client', 5, 60); print('Rate limit test:', 'ALLOWED' if allowed else 'BLOCKED'); print('Rate info:', info); print('Global stats:', rate_limiter.get_global_stats())"
 

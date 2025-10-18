@@ -4,7 +4,7 @@ from sentence_transformers import SentenceTransformer
 from sklearn.feature_extraction.text import TfidfVectorizer
 from scipy.sparse import load_npz
 import argparse, joblib
-from rerank import CrossEncoderReranker, mmr_diversify, rerank_with_ce, dedup_by_article, Candidate
+from .rerank import CrossEncoderReranker, mmr_diversify, rerank_with_ce, dedup_by_article, Candidate
 
 IDX = "data/index/wp.faiss"
 META = "data/index/wp.meta.json"

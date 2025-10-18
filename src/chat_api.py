@@ -4,7 +4,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, conint
 from sentence_transformers import SentenceTransformer
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, HTMLResponse
 from sklearn.feature_extraction.text import TfidfVectorizer
 from scipy.sparse import load_npz
 import joblib
@@ -15,6 +15,8 @@ from .ab_logging import ab_logger, ab_logging_middleware, get_ab_stats
 from .model_manager import get_device_status
 from .cache import cache_manager, cache_search_results, get_cached_search_results
 from .rate_limit import check_rate_limit, get_rate_limit_headers, rate_limiter
+from .slo_monitoring import record_api_metric, get_slo_status, get_metrics_summary
+from .dashboard import get_dashboard_data, get_ab_summary, get_cache_summary, get_performance_summary
 
 IDX = "data/index/wp.faiss"
 META = "data/index/wp.meta.json"
@@ -128,50 +130,58 @@ def _search_hybrid_with_rerank(q: str, topk: int, wd=0.6, wb=0.4, rerank=False, 
 
 @app.get("/search")
 def search(q: str, topk: conint(ge=1, le=TOPK_MAX) = TOPK_DEFAULT, mode: str = "hybrid", rerank: bool = False, highlight: bool = True, request: Request = None):
-    if not q.strip():
-        raise HTTPException(400, "q is empty")
+    start_time = time.time()
+    status_code = 200
+    cache_hit = False
+    fallback_used = False
+    error_message = None
 
-    # Rate limiting check
-    if get_config_value("api.rate_limit.enabled", True):
-        max_requests = get_config_value("api.rate_limit.max_requests", 100)
-        window_seconds = get_config_value("api.rate_limit.window_seconds", 3600)
+    try:
+        if not q.strip():
+            raise HTTPException(400, "q is empty")
 
-        is_allowed, rate_info = check_rate_limit(request, max_requests, window_seconds)
-        if not is_allowed:
-            headers = get_rate_limit_headers(rate_info)
-            raise HTTPException(429, "Rate limit exceeded", headers=headers)
+        # Rate limiting check
+        if get_config_value("api.rate_limit.enabled", True):
+            max_requests = get_config_value("api.rate_limit.max_requests", 100)
+            window_seconds = get_config_value("api.rate_limit.window_seconds", 3600)
 
-    # Check cache first
-    if get_config_value("api.cache.enabled", True):
-        cached_results = get_cached_search_results(q)
-        if cached_results is not None:
-            return JSONResponse({
-                "query": q,
-                "mode": mode,
-                "rerank": False,
-                "highlight": highlight,
-                "cached": True,
-                "contexts": cached_results
-            })
-    if mode == "dense":
-        hits = _search_dense(q, topk)
-        rerank_status = False
-    elif mode == "bm25":
-        hits = _search_bm25(q, topk)
-        rerank_status = False
-    else:
-        hits, rerank_status = _search_hybrid_with_rerank(q, topk, rerank=rerank)
-    out = []
-    for rank, hit in enumerate(hits, 1):
-        if len(hit) == 3:  # (idx, hybrid_score, ce_score)
-            idx, hybrid_sc, ce_sc = hit
-        else:  # (idx, score) - backward compatibility
-            idx, hybrid_sc = hit
-            ce_sc = None
+            is_allowed, rate_info = check_rate_limit(request, max_requests, window_seconds)
+            if not is_allowed:
+                headers = get_rate_limit_headers(rate_info)
+                raise HTTPException(429, "Rate limit exceeded", headers=headers)
 
-        if idx < 0 or idx >= len(meta):
-            continue
-        m = meta[idx]
+        # Check cache first
+        if get_config_value("api.cache.enabled", True):
+            cached_results = get_cached_search_results(q)
+            if cached_results is not None:
+                cache_hit = True
+                return JSONResponse({
+                    "query": q,
+                    "mode": mode,
+                    "rerank": False,
+                    "highlight": highlight,
+                    "cached": True,
+                    "contexts": cached_results
+                })
+        if mode == "dense":
+            hits = _search_dense(q, topk)
+            rerank_status = False
+        elif mode == "bm25":
+            hits = _search_bm25(q, topk)
+            rerank_status = False
+        else:
+            hits, rerank_status = _search_hybrid_with_rerank(q, topk, rerank=rerank)
+        out = []
+        for rank, hit in enumerate(hits, 1):
+            if len(hit) == 3:  # (idx, hybrid_score, ce_score)
+                idx, hybrid_sc, ce_sc = hit
+            else:  # (idx, score) - backward compatibility
+                idx, hybrid_sc = hit
+                ce_sc = None
+
+            if idx < 0 or idx >= len(meta):
+                continue
+            m = meta[idx]
 
         result_item = {
             "rank": rank,
@@ -188,32 +198,53 @@ def search(q: str, topk: conint(ge=1, le=TOPK_MAX) = TOPK_DEFAULT, mode: str = "
 
         out.append(result_item)
 
-    # Apply highlighting if requested
-    if highlight:
-        out = highlight_results(out, q, get_config_value("api.snippet_length", 400),
-                               use_morphology=req.use_morphology)
+        # Apply highlighting if requested
+        if highlight:
+            out = highlight_results(out, q, get_config_value("api.snippet_length", 400))
 
-    # Log A/B metrics (additional logging for detailed analysis)
-    try:
-        ab_logger.log_search_metrics(
-            query=q,
-            rerank_enabled=rerank_status,
-            latency_ms=0,  # Will be updated by middleware
-            result_count=len(out),
-            mode=mode,
-            topk=topk,
-            user_agent=request.headers.get("user-agent") if request else None,
-            ip_address=request.client.host if request and request.client else None
-        )
+        # Log A/B metrics (additional logging for detailed analysis)
+        try:
+            ab_logger.log_search_metrics(
+                query=q,
+                rerank_enabled=rerank_status,
+                latency_ms=0,  # Will be updated by middleware
+                result_count=len(out),
+                mode=mode,
+                topk=topk,
+                user_agent=request.headers.get("user-agent") if request else None,
+                ip_address=request.client.host if request and request.client else None
+            )
+        except Exception as e:
+            pass  # Don't fail the request if logging fails
+
+        # Cache results if caching is enabled
+        if get_config_value("api.cache.enabled", True):
+            search_ttl = get_config_value("api.cache.search_ttl", 1800)
+            cache_search_results(q, out, search_ttl)
+
+        return JSONResponse({"q": q, "mode": mode, "rerank": rerank_status, "highlight": highlight, "contexts": out})
+
+    except HTTPException as e:
+        status_code = e.status_code
+        error_message = str(e.detail)
+        raise e
     except Exception as e:
-        pass  # Don't fail the request if logging fails
-
-    # Cache results if caching is enabled
-    if get_config_value("api.cache.enabled", True):
-        search_ttl = get_config_value("api.cache.search_ttl", 1800)
-        cache_search_results(q, out, search_ttl)
-
-    return JSONResponse({"q": q, "mode": mode, "rerank": rerank_status, "highlight": highlight, "contexts": out})
+        status_code = 500
+        error_message = str(e)
+        fallback_used = True
+        raise HTTPException(500, f"Internal server error: {str(e)}")
+    finally:
+        # Record SLO metrics
+        latency_ms = int((time.time() - start_time) * 1000)
+        record_api_metric(
+            endpoint="search",
+            latency_ms=latency_ms,
+            status_code=status_code,
+            rerank_enabled=rerank,
+            cache_hit=cache_hit,
+            fallback_used=fallback_used,
+            error_message=error_message
+        )
 
 @app.post("/ask")
 def ask(req: AskReq):
@@ -311,6 +342,72 @@ def get_rate_limit_stats():
     try:
         stats = rate_limiter.get_global_stats()
         return JSONResponse(stats)
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+@app.get("/stats/dashboard")
+def get_dashboard_statistics(days: int = 7, hours: int = 24):
+    """Get comprehensive dashboard data"""
+    try:
+        dashboard_data = get_dashboard_data(days, hours)
+        return JSONResponse(dashboard_data)
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+@app.get("/stats/ab-summary")
+def get_ab_summary_statistics(days: int = 7):
+    """Get A/B testing summary"""
+    try:
+        summary = get_ab_summary(days)
+        return JSONResponse(summary)
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+@app.get("/stats/cache-summary")
+def get_cache_summary_statistics(hours: int = 24):
+    """Get cache efficiency summary"""
+    try:
+        summary = get_cache_summary(hours)
+        return JSONResponse(summary)
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+@app.get("/stats/performance-summary")
+def get_performance_summary_statistics(hours: int = 24):
+    """Get performance trends summary"""
+    try:
+        summary = get_performance_summary(hours)
+        return JSONResponse(summary)
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+@app.get("/dashboard")
+def serve_dashboard():
+    """Serve the dashboard HTML page"""
+    try:
+        with open("dashboard.html", "r", encoding="utf-8") as f:
+            html_content = f.read()
+        return HTMLResponse(content=html_content)
+    except FileNotFoundError:
+        return JSONResponse({"error": "Dashboard file not found"}, status_code=404)
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+@app.get("/stats/slo")
+def get_slo_statistics():
+    """Get SLO monitoring statistics"""
+    try:
+        slo_status = get_slo_status()
+        return JSONResponse(slo_status)
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+@app.get("/stats/metrics")
+def get_metrics_statistics(hours: int = 24):
+    """Get metrics summary for the last N hours"""
+    try:
+        summary = get_metrics_summary(hours)
+        return JSONResponse(summary)
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
 

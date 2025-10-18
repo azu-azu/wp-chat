@@ -1,0 +1,3 @@
+{"timestamp": 1760784939.228873, "endpoint": "search", "latency_ms": 500, "status_code": 200, "rerank_enabled": true, "cache_hit": false, "fallback_used": false, "error_message": null}
+{"timestamp": 1760784939.229532, "endpoint": "search", "latency_ms": 1200, "status_code": 200, "rerank_enabled": true, "cache_hit": false, "fallback_used": false, "error_message": null}
+{"timestamp": 1760784939.229633, "endpoint": "search", "latency_ms": 300, "status_code": 500, "rerank_enabled": false, "cache_hit": true, "fallback_used": false, "error_message": null}

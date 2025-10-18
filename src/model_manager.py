@@ -2,7 +2,7 @@
 import torch
 import logging
 from typing import Optional, Dict, Any
-from config import get_config_value
+from .config import get_config_value
 
 logger = logging.getLogger(__name__)
 
