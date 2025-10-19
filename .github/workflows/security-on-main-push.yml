@@ -28,8 +28,6 @@ jobs:
       # 1) Secrets（Gitleaks）
       - name: Gitleaks scan
         uses: zricethezav/gitleaks-action@v2
-        with:
-          args: detect --source . --no-git --redact
         continue-on-error: false
 
       # 2) SAST（Semgrep）
