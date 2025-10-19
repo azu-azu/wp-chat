@@ -334,10 +334,26 @@ class BackupManager:
                 verification_passed=False
             )
 
-            # Extract archive
+            # Extract archive with security check
             with tarfile.open(backup_path, "r:gz") as tar:
-                tar.extractall(path=target_path)
-                restore.restored_files = tar.getnames()
+                # Check for path traversal vulnerabilities and extract safely
+                safe_members = []
+                for member in tar.getmembers():
+                    if os.path.isabs(member.name) or ".." in member.name:
+                        logger.error(f"Unsafe path in archive: {member.name}")
+                        raise ValueError(f"Unsafe path detected: {member.name}")
+                    
+                    # Normalize path to prevent traversal
+                    member.name = os.path.normpath(member.name)
+                    if member.name.startswith('/') or '..' in member.name:
+                        logger.error(f"Normalized unsafe path: {member.name}")
+                        raise ValueError(f"Unsafe path detected after normalization: {member.name}")
+                    
+                    safe_members.append(member)
+                
+                # Extract only safe members
+                tar.extractall(path=target_path, members=safe_members)
+                restore.restored_files = [member.name for member in safe_members]
 
             # Verify restore if requested
             if verify:

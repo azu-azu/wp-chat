@@ -125,10 +125,10 @@ class CacheManager:
                 return None
 
             # Load cached data
-            with open(cache_path, 'rb') as f:
-                return pickle.load(f)
+            with open(cache_path, 'r', encoding='utf-8') as f:
+                return json.load(f)
 
-        except (pickle.PickleError, json.JSONDecodeError, FileNotFoundError):
+        except (json.JSONDecodeError, FileNotFoundError):
             # Remove corrupted cache files
             for path in [cache_path, meta_path]:
                 if os.path.exists(path):
@@ -149,8 +149,8 @@ class CacheManager:
             meta_path = self._get_metadata_path(key)
 
             # Save data
-            with open(cache_path, 'wb') as f:
-                pickle.dump(value, f)
+            with open(cache_path, 'w', encoding='utf-8') as f:
+                json.dump(value, f)
 
             # Save metadata
             metadata = {
