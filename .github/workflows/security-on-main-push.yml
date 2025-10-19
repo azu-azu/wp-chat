@@ -1,0 +1,71 @@
+name: security-on-main-push
+
+on:
+  push:
+    branches: [ main ]
+    # 不要ならコメントアウト：ドキュメントだけの更新はスキップ
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
+  # 手動実行したい時だけ押せるように（任意）
+  workflow_dispatch: {}
+
+concurrency:
+  group: security-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # 1) Secrets（Gitleaks）
+      - name: Gitleaks scan
+        uses: zricethezav/gitleaks-action@v2
+        with:
+          args: detect --source . --no-git --redact
+        continue-on-error: false
+
+      # 2) SAST（Semgrep）
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+      - name: Install Semgrep
+        run: pip install semgrep
+      - name: Semgrep scan
+        run: semgrep scan --error --config auto
+
+      # 3) SCA（依存脆弱性）
+      - name: Node audit
+        if: hashFiles('**/package-lock.json') != ''
+        run: |
+          npm ci --no-audit --no-fund
+          npm audit --audit-level=high
+      - name: Python audit
+        if: hashFiles('**/requirements.txt') != ''
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pip-audit
+          pip-audit --strict
+
+      # 4)（任意）IaC/コンテナを使ってる場合だけ
+      - name: Install Trivy
+        if: ${{ false }} # 使うとき true に変える or 条件を実装
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y wget
+          wget -qO- https://aquasecurity.github.io/trivy-repo/deb/public.key | sudo apt-key add -
+          echo deb https://aquasecurity.github.io/trivy-repo/deb stable main | sudo tee -a /etc/apt/sources.list.d/trivy.list
+          sudo apt-get update -y
+          sudo apt-get install -y trivy
+      - name: Trivy FS
+        if: ${{ false }} # 同上
+        run: trivy fs --exit-code 1 --severity HIGH,CRITICAL .
