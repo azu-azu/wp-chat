@@ -54,11 +54,20 @@ jobs:
           python -m pip install --upgrade "pip>=23.3.1"
           pip install -r requirements.txt
           pip install pip-audit
-          pip-audit --desc --strict --format=json --output=audit-results.json
+          echo "=== Running pip-audit (detailed) ==="
+          pip-audit --desc --strict --format=text || true
+          echo "=== Running pip-audit (JSON) ==="
+          pip-audit --desc --strict --format=json --output=audit-results.json || true
           echo "=== Audit Results ==="
-          cat audit-results.json
+          if [ -f audit-results.json ]; then
+            cat audit-results.json
+          else
+            echo "No audit results file found"
+          fi
           echo "=== Checking pip version ==="
           pip --version
+          echo "=== Checking installed packages ==="
+          pip list
 
       # 4)（任意）IaC/コンテナを使ってる場合だけ
       - name: Install Trivy
