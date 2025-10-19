@@ -352,7 +352,7 @@ class IncidentResponseRunbook:
             # Execute command
             if action.command.startswith("curl"):
                 # HTTP request
-                result = subprocess.run(action.command, shell=True,
+                result = subprocess.run(action.command, shell=False,
                                       capture_output=True, text=True, timeout=action.estimated_time)
                 if result.returncode == 0:
                     return True, result.stdout
@@ -360,7 +360,7 @@ class IncidentResponseRunbook:
                     return False, result.stderr
             else:
                 # System command
-                result = subprocess.run(action.command, shell=True,
+                result = subprocess.run(action.command, shell=False,
                                       capture_output=True, text=True, timeout=action.estimated_time)
                 if result.returncode == 0:
                     return True, result.stdout

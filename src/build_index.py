@@ -14,7 +14,7 @@ MODEL_NAME = "all-MiniLM-L6-v2"
 DIM = 384
 
 def sha1(s: str) -> str:
-    return hashlib.sha1(s.encode("utf-8")).hexdigest()
+    return hashlib.sha256(s.encode("utf-8")).hexdigest()
 
 def load_cache():
     cache = {}
