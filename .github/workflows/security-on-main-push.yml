@@ -51,10 +51,14 @@ jobs:
       - name: Python audit
         if: hashFiles('**/requirements.txt') != ''
         run: |
-          python -m pip install --upgrade pip>=24.0
+          python -m pip install --upgrade "pip>=25.3"
           pip install -r requirements.txt
           pip install pip-audit
-          pip-audit --desc --strict --format=json
+          pip-audit --desc --strict --format=json --output=audit-results.json
+          echo "=== Audit Results ==="
+          cat audit-results.json
+          echo "=== Checking pip version ==="
+          pip --version
 
       # 4)（任意）IaC/コンテナを使ってる場合だけ
       - name: Install Trivy
