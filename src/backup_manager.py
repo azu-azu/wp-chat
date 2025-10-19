@@ -342,15 +342,15 @@ class BackupManager:
                     if os.path.isabs(member.name) or ".." in member.name:
                         logger.error(f"Unsafe path in archive: {member.name}")
                         raise ValueError(f"Unsafe path detected: {member.name}")
-                    
+
                     # Normalize path to prevent traversal
                     member.name = os.path.normpath(member.name)
                     if member.name.startswith('/') or '..' in member.name:
                         logger.error(f"Normalized unsafe path: {member.name}")
                         raise ValueError(f"Unsafe path detected after normalization: {member.name}")
-                    
+
                     safe_members.append(member)
-                
+
                 # Extract only safe members
                 tar.extractall(path=target_path, members=safe_members)
                 restore.restored_files = [member.name for member in safe_members]
