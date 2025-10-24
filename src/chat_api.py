@@ -5,10 +5,11 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, conint
 from sentence_transformers import SentenceTransformer
-from fastapi.responses import JSONResponse, HTMLResponse
+from fastapi.responses import JSONResponse, HTMLResponse, StreamingResponse
 from sklearn.feature_extraction.text import TfidfVectorizer
 from scipy.sparse import load_npz
 import joblib
+import time
 from .rerank import CrossEncoderReranker, mmr_diversify, rerank_with_ce, dedup_by_article, Candidate
 from .highlight import highlight_results, get_highlight_info
 from .config import get_config_value
@@ -25,6 +26,8 @@ from .runbook import (detect_incident, get_emergency_procedures, execute_emergen
                      auto_detect_incidents, IncidentType, Severity, EmergencyAction)
 from .backup_manager import (create_backup, restore_backup, list_backups, get_backup_statistics,
                            cleanup_old_backups, schedule_backup, BackupInfo, RestoreInfo)
+from .generation import generation_pipeline
+from .openai_client import openai_client
 
 IDX = "data/index/wp.faiss"
 META = "data/index/wp.meta.json"
@@ -41,6 +44,14 @@ class AskReq(BaseModel):
     rerank: bool = False
     highlight: bool = True  # Enable query highlighting
     use_morphology: bool = True  # Use morphological analysis for Japanese
+
+class GenerateReq(BaseModel):
+    question: str
+    topk: conint(ge=1, le=TOPK_MAX) = TOPK_DEFAULT
+    stream: bool = True
+    user_id: str = "anonymous"
+    mode: str = "hybrid"  # dense|bm25|hybrid
+    rerank: bool = False
 
 app = FastAPI()
 app.add_middleware(
@@ -740,6 +751,250 @@ def clear_cache():
         return JSONResponse({"success": success, "message": "Cache cleared"})
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
+
+@app.post("/generate")
+async def generate(req: GenerateReq, request: Request = None):
+    """Generate RAG response with streaming support"""
+    start_time = time.time()
+    status_code = 200
+    cache_hit = False
+    fallback_used = False
+    error_message = None
+    generation_metrics = None
+
+    try:
+        if not req.question.strip():
+            raise HTTPException(400, "question is empty")
+
+        # Rate limiting check
+        if get_config_value("api.rate_limit.enabled", True):
+            max_requests = get_config_value("api.rate_limit.max_requests", 50)  # Lower limit for generation
+            window_seconds = get_config_value("api.rate_limit.window_seconds", 3600)
+
+            is_allowed, rate_info = check_rate_limit(request, max_requests, window_seconds)
+            if not is_allowed:
+                headers = get_rate_limit_headers(rate_info)
+                raise HTTPException(429, "Rate limit exceeded", headers=headers)
+
+        # Check cache first
+        cache_key = f"generate:{req.question}:{req.topk}:{req.mode}:{req.rerank}"
+        if get_config_value("api.cache.enabled", True):
+            cached_result = cache_manager.get(cache_key)
+            if cached_result is not None:
+                cache_hit = True
+                if req.stream:
+                    # For streaming, return cached result as non-streaming
+                    return JSONResponse(cached_result)
+                else:
+                    return JSONResponse(cached_result)
+
+        # Perform retrieval using existing hybrid search
+        if req.mode == "dense":
+            hits = _search_dense(req.question, req.topk)
+            rerank_status = False
+        elif req.mode == "bm25":
+            hits = _search_bm25(req.question, req.topk)
+            rerank_status = False
+        else:
+            # Check canary deployment for rerank decision
+            canary_rerank_enabled = is_rerank_enabled_for_user(req.user_id)
+            final_rerank = req.rerank and canary_rerank_enabled
+            hits, rerank_status = _search_hybrid_with_rerank(req.question, req.topk, rerank=final_rerank)
+
+        # Convert hits to document format
+        docs = []
+        for rank, hit in enumerate(hits, 1):
+            if len(hit) == 3:  # (idx, hybrid_score, ce_score)
+                idx, hybrid_sc, ce_sc = hit
+            else:  # (idx, score) - backward compatibility
+                idx, hybrid_sc = hit
+                ce_sc = None
+
+            if idx < 0 or idx >= len(meta):
+                continue
+
+            m = meta[idx]
+            doc = {
+                "rank": rank,
+                "hybrid_score": hybrid_sc,
+                "post_id": m["post_id"],
+                "chunk_id": m["chunk_id"],
+                "title": m["title"],
+                "url": m["url"],
+                "snippet": m["chunk"][:400] + ("…" if len(m["chunk"]) > 400 else ""),
+                "chunk": m["chunk"]
+            }
+
+            if ce_sc is not None:
+                doc["ce_score"] = ce_sc
+
+            docs.append(doc)
+
+        # Process context and build prompt
+        processed_docs, context_metadata = generation_pipeline.process_retrieval_results(docs)
+        messages, prompt_stats = generation_pipeline.build_prompt(req.question, processed_docs)
+
+        if req.stream:
+            # Streaming response
+            async def generate_stream():
+                try:
+                    full_response = ""
+                    async for chunk in openai_client.stream_chat(messages):
+                        if chunk["type"] == "delta":
+                            content = chunk["content"]
+                            full_response += content
+                            yield f"data: {json.dumps({'type': 'delta', 'content': content})}\n\n"
+
+                        elif chunk["type"] == "metrics":
+                            nonlocal generation_metrics
+                            generation_metrics = chunk
+                            yield f"data: {json.dumps({'type': 'metrics', 'ttft_ms': chunk['ttft_ms'], 'model': chunk['model']})}\n\n"
+
+                        elif chunk["type"] == "done":
+                            # Post-process response
+                            result = generation_pipeline.post_process_response(full_response, processed_docs)
+
+                            # Send references
+                            yield f"data: {json.dumps({'type': 'refs', 'value': result.references})}\n\n"
+
+                            # Send final metrics
+                            metrics = chunk["metrics"]
+                            metrics.update({
+                                "citation_count": result.metadata["citation_count"],
+                                "has_citations": result.metadata["has_citations"],
+                                "context_metadata": context_metadata,
+                                "prompt_stats": prompt_stats
+                            })
+                            yield f"data: {json.dumps({'type': 'done', 'metrics': metrics})}\n\n"
+
+                        elif chunk["type"] == "error":
+                            nonlocal generation_metrics, fallback_used
+                            generation_metrics = chunk["metrics"]
+                            fallback_used = True
+
+                            # Use fallback response
+                            result = generation_pipeline.generate_fallback_response(req.question, processed_docs)
+                            yield f"data: {json.dumps({'type': 'error', 'error': chunk['error'], 'fallback': result.answer})}\n\n"
+                            yield f"data: {json.dumps({'type': 'refs', 'value': result.references})}\n\n"
+                            yield f"data: {json.dumps({'type': 'done', 'metrics': generation_metrics})}\n\n"
+
+                except Exception as e:
+                    nonlocal error_message, fallback_used
+                    error_message = str(e)
+                    fallback_used = True
+
+                    result = generation_pipeline.generate_fallback_response(req.question, processed_docs)
+                    yield f"data: {json.dumps({'type': 'error', 'error': str(e), 'fallback': result.answer})}\n\n"
+                    yield f"data: {json.dumps({'type': 'refs', 'value': result.references})}\n\n"
+                    yield f"data: {json.dumps({'type': 'done', 'metrics': {'success': False, 'error_message': str(e)}})}\n\n"
+
+            return StreamingResponse(
+                generate_stream(),
+                media_type="text/event-stream",
+                headers={
+                    "Cache-Control": "no-cache",
+                    "Connection": "keep-alive",
+                    "X-Accel-Buffering": "no"  # Disable nginx buffering
+                }
+            )
+
+        else:
+            # Non-streaming response
+            try:
+                content, metrics = await openai_client.chat_completion(messages)
+                generation_metrics = metrics
+
+                if metrics.success:
+                    # Post-process response
+                    result = generation_pipeline.post_process_response(content, processed_docs)
+
+                    response_data = {
+                        "answer": result.answer,
+                        "references": result.references,
+                        "metadata": {
+                            "latency_ms": metrics.total_latency_ms,
+                            "ttft_ms": metrics.ttft_ms,
+                            "token_count": metrics.token_usage.total_tokens,
+                            "model": metrics.model,
+                            "citation_count": result.metadata["citation_count"],
+                            "has_citations": result.metadata["has_citations"],
+                            "context_metadata": context_metadata,
+                            "prompt_stats": prompt_stats,
+                            "rerank_enabled": rerank_status
+                        }
+                    }
+                else:
+                    # Use fallback
+                    fallback_used = True
+                    result = generation_pipeline.generate_fallback_response(req.question, processed_docs)
+                    response_data = {
+                        "answer": result.answer,
+                        "references": result.references,
+                        "metadata": {
+                            "latency_ms": metrics.total_latency_ms,
+                            "ttft_ms": metrics.ttft_ms,
+                            "token_count": 0,
+                            "model": metrics.model,
+                            "fallback": True,
+                            "error_message": metrics.error_message,
+                            "context_metadata": context_metadata,
+                            "prompt_stats": prompt_stats,
+                            "rerank_enabled": rerank_status
+                        }
+                    }
+
+                # Cache the result
+                if get_config_value("api.cache.enabled", True):
+                    cache_ttl = get_config_value("api.cache.search_ttl", 1800)
+                    cache_manager.set(cache_key, response_data, cache_ttl)
+
+                return JSONResponse(response_data)
+
+            except Exception as e:
+                fallback_used = True
+                error_message = str(e)
+                result = generation_pipeline.generate_fallback_response(req.question, processed_docs)
+
+                response_data = {
+                    "answer": result.answer,
+                    "references": result.references,
+                    "metadata": {
+                        "latency_ms": int((time.time() - start_time) * 1000),
+                        "ttft_ms": 0,
+                        "token_count": 0,
+                        "model": "fallback",
+                        "fallback": True,
+                        "error_message": str(e),
+                        "context_metadata": context_metadata,
+                        "prompt_stats": prompt_stats,
+                        "rerank_enabled": rerank_status
+                    }
+                }
+
+                return JSONResponse(response_data)
+
+    except HTTPException as e:
+        status_code = e.status_code
+        error_message = str(e.detail)
+        raise e
+    except Exception as e:
+        status_code = 500
+        error_message = str(e)
+        fallback_used = True
+        raise HTTPException(500, f"Internal server error: {str(e)}")
+    finally:
+        # Record SLO metrics
+        latency_ms = int((time.time() - start_time) * 1000)
+        record_api_metric(
+            endpoint="generate",
+            latency_ms=latency_ms,
+            status_code=status_code,
+            rerank_enabled=req.rerank if 'req' in locals() else False,
+            cache_hit=cache_hit,
+            fallback_used=fallback_used,
+            error_message=error_message,
+            generation_metrics=generation_metrics.__dict__ if generation_metrics else None
+        )
 
 @app.get("/stats/device")
 def device_status():

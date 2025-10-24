@@ -1,0 +1,20 @@
+{
+  "gpt-4o-mini": {
+    "input_per_1m": 0.15,
+    "output_per_1m": 0.60,
+    "source": "https://openai.com/api/pricing/",
+    "description": "Cost-efficient, fast, good Japanese support"
+  },
+  "gpt-4.1-mini": {
+    "input_per_1m": 0.15,
+    "output_per_1m": 0.60,
+    "source": "TBD - check official pricing",
+    "description": "Enhanced reading comprehension (future)"
+  },
+  "o4-mini": {
+    "input_per_1m": 0.15,
+    "output_per_1m": 0.60,
+    "source": "TBD - check official pricing",
+    "description": "Reasoning-optimized, high-score (future)"
+  }
+}

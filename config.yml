@@ -77,6 +77,12 @@ api:
         success_rate: 0.99     # Target success rate (99%)
         window_minutes: 5      # Monitoring window
         alert_threshold: 0.9   # Alert threshold
+      generate:
+        ttft_ms: 1200         # Time to first token
+        p95_latency_ms: 6000   # Target p95 latency
+        success_rate: 0.98     # Target success rate (98%)
+        window_minutes: 5      # Monitoring window
+        alert_threshold: 0.9   # Alert threshold
 
   # Canary deployment configuration
   canary:
@@ -103,6 +109,36 @@ api:
     compression: true           # Enable compression
     verification: true          # Enable backup verification
     auto_cleanup: true          # Enable automatic cleanup
+
+# LLM Configuration (MVP4)
+llm:
+  provider: openai
+  alias: default-mini  # Switch models by changing alias
+  timeout_sec: 30
+  stream: true
+
+models:
+  default-mini:
+    name: gpt-4o-mini
+    temperature: 0.2
+    max_tokens: 700
+    description: "Cost-efficient, fast, good Japanese support"
+  alt-1:
+    name: gpt-4.1-mini
+    temperature: 0.2
+    max_tokens: 700
+    description: "Enhanced reading comprehension (future)"
+  alt-2:
+    name: o4-mini
+    temperature: 0.2
+    max_tokens: 700
+    description: "Reasoning-optimized, high-score (future)"
+
+generation:
+  context_max_tokens: 3500
+  chunk_max_tokens: 1000
+  max_chunks: 5
+  citation_style: "bracketed"  # [[1]], [[2]]
 
 # Evaluation Configuration
 eval:

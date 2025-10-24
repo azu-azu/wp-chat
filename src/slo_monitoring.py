@@ -28,6 +28,7 @@ class MetricPoint:
     cache_hit: bool
     fallback_used: bool
     error_message: Optional[str] = None
+    generation_metrics: Optional[Dict[str, Any]] = None  # For generation-specific metrics
 
 @dataclass
 class SLOMetrics:
@@ -45,6 +46,10 @@ class SLOMetrics:
     cache_hit_rate: float
     fallback_rate: float
     error_rate: float
+    # Generation-specific metrics
+    avg_ttft_ms: float = 0.0  # Average time to first token
+    avg_token_count: float = 0.0  # Average token count
+    citation_rate: float = 0.0  # Rate of responses with citations
 
 class SLOMonitor:
     """SLO monitoring and alerting system"""
@@ -81,7 +86,8 @@ class SLOMonitor:
 
     def record_metric(self, endpoint: str, latency_ms: int, status_code: int,
                      rerank_enabled: bool = False, cache_hit: bool = False,
-                     fallback_used: bool = False, error_message: Optional[str] = None):
+                     fallback_used: bool = False, error_message: Optional[str] = None,
+                     generation_metrics: Optional[Dict[str, Any]] = None):
         """Record a single metric point"""
         metric = MetricPoint(
             timestamp=time.time(),
@@ -91,7 +97,8 @@ class SLOMonitor:
             rerank_enabled=rerank_enabled,
             cache_hit=cache_hit,
             fallback_used=fallback_used,
-            error_message=error_message
+            error_message=error_message,
+            generation_metrics=generation_metrics
         )
 
         # Add to buffer
@@ -136,6 +143,21 @@ class SLOMonitor:
         fallback_rate = sum(1 for m in window_metrics if m.fallback_used) / total_requests if total_requests > 0 else 0
         error_rate = failed_requests / total_requests if total_requests > 0 else 0
 
+        # Calculate generation-specific metrics
+        generation_metrics = [m for m in window_metrics if m.generation_metrics is not None]
+        avg_ttft_ms = 0.0
+        avg_token_count = 0.0
+        citation_rate = 0.0
+
+        if generation_metrics:
+            ttft_values = [m.generation_metrics.get('ttft_ms', 0) for m in generation_metrics]
+            token_values = [m.generation_metrics.get('token_usage', {}).get('total_tokens', 0) for m in generation_metrics]
+            citation_values = [m.generation_metrics.get('has_citations', False) for m in generation_metrics]
+
+            avg_ttft_ms = statistics.mean(ttft_values) if ttft_values else 0.0
+            avg_token_count = statistics.mean(token_values) if token_values else 0.0
+            citation_rate = sum(citation_values) / len(citation_values) if citation_values else 0.0
+
         return SLOMetrics(
             window_start=window_start,
             window_end=current_time,
@@ -149,7 +171,10 @@ class SLOMonitor:
             rerank_rate=rerank_rate,
             cache_hit_rate=cache_hit_rate,
             fallback_rate=fallback_rate,
-            error_rate=error_rate
+            error_rate=error_rate,
+            avg_ttft_ms=avg_ttft_ms,
+            avg_token_count=avg_token_count,
+            citation_rate=citation_rate
         )
 
     def check_slo_violations(self, endpoint: str) -> List[Dict[str, Any]]:
@@ -299,10 +324,12 @@ slo_monitor = SLOMonitor()
 
 def record_api_metric(endpoint: str, latency_ms: int, status_code: int,
                      rerank_enabled: bool = False, cache_hit: bool = False,
-                     fallback_used: bool = False, error_message: Optional[str] = None):
+                     fallback_used: bool = False, error_message: Optional[str] = None,
+                     generation_metrics: Optional[Dict[str, Any]] = None):
     """Convenience function to record API metrics"""
     slo_monitor.record_metric(endpoint, latency_ms, status_code,
-                             rerank_enabled, cache_hit, fallback_used, error_message)
+                             rerank_enabled, cache_hit, fallback_used, error_message,
+                             generation_metrics)
 
 def get_slo_status() -> Dict[str, Any]:
     """Get current SLO status"""
