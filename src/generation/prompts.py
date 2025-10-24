@@ -1,7 +1,7 @@
 # src/prompts.py - Prompt engineering for RAG generation
 import json
 from typing import List, Dict, Any
-from .config import get_config_value
+from ..core.config import get_config_value
 
 def build_system_prompt() -> str:
     """Build the TsukiUsagi system prompt"""
