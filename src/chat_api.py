@@ -10,6 +10,7 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from scipy.sparse import load_npz
 import joblib
 import time
+from dotenv import load_dotenv
 from .rerank import CrossEncoderReranker, mmr_diversify, rerank_with_ce, dedup_by_article, Candidate
 from .highlight import highlight_results, get_highlight_info
 from .config import get_config_value
@@ -28,6 +29,9 @@ from .backup_manager import (create_backup, restore_backup, list_backups, get_ba
                            cleanup_old_backups, schedule_backup, BackupInfo, RestoreInfo)
 from .generation import generation_pipeline
 from .openai_client import openai_client
+
+# Load environment variables from .env file
+load_dotenv()
 
 IDX = "data/index/wp.faiss"
 META = "data/index/wp.meta.json"
@@ -837,6 +841,7 @@ async def generate(req: GenerateReq, request: Request = None):
         if req.stream:
             # Streaming response
             async def generate_stream():
+                nonlocal generation_metrics, fallback_used, error_message
                 try:
                     full_response = ""
                     async for chunk in openai_client.stream_chat(messages):
@@ -846,7 +851,6 @@ async def generate(req: GenerateReq, request: Request = None):
                             yield f"data: {json.dumps({'type': 'delta', 'content': content})}\n\n"
 
                         elif chunk["type"] == "metrics":
-                            nonlocal generation_metrics
                             generation_metrics = chunk
                             yield f"data: {json.dumps({'type': 'metrics', 'ttft_ms': chunk['ttft_ms'], 'model': chunk['model']})}\n\n"
 
@@ -868,7 +872,6 @@ async def generate(req: GenerateReq, request: Request = None):
                             yield f"data: {json.dumps({'type': 'done', 'metrics': metrics})}\n\n"
 
                         elif chunk["type"] == "error":
-                            nonlocal generation_metrics, fallback_used
                             generation_metrics = chunk["metrics"]
                             fallback_used = True
 
@@ -879,7 +882,6 @@ async def generate(req: GenerateReq, request: Request = None):
                             yield f"data: {json.dumps({'type': 'done', 'metrics': generation_metrics})}\n\n"
 
                 except Exception as e:
-                    nonlocal error_message, fallback_used
                     error_message = str(e)
                     fallback_used = True
 
