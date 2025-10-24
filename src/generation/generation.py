@@ -3,7 +3,7 @@ import json
 import time
 from typing import List, Dict, Any, Optional, Tuple
 from dataclasses import dataclass
-from .config import get_config_value
+from ..core.config import get_config_value
 from .prompts import build_messages, build_fallback_prompt, validate_citations, format_references
 
 @dataclass

@@ -2,7 +2,7 @@
 import numpy as np
 from typing import List, Dict, Any, Optional
 from dataclasses import dataclass
-from .config import get_config_value
+from ..core.config import get_config_value
 
 @dataclass
 class ScoringResult:

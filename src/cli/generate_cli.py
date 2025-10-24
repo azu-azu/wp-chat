@@ -14,9 +14,9 @@ load_dotenv()
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
-from src.generation import generation_pipeline
-from src.openai_client import openai_client
-from src.config import get_config_value
+from ..generation.generation import generation_pipeline
+from ..generation.openai_client import openai_client
+from ..core.config import get_config_value
 
 async def test_generation(question: str, topk: int = 5, stream: bool = True, mode: str = "hybrid", rerank: bool = False):
     """Test generation with a question"""

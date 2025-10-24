@@ -7,7 +7,7 @@ from typing import List, Dict, Any, Optional, AsyncGenerator, Tuple
 from dataclasses import dataclass
 from openai import AsyncOpenAI
 from dotenv import load_dotenv
-from .config import get_config_value, load_config
+from ..core.config import get_config_value, load_config
 
 # Load environment variables from .env file
 load_dotenv()

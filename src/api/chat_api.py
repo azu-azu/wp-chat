@@ -11,24 +11,24 @@ from scipy.sparse import load_npz
 import joblib
 import time
 from dotenv import load_dotenv
-from .rerank import CrossEncoderReranker, mmr_diversify, rerank_with_ce, dedup_by_article, Candidate
-from .highlight import highlight_results, get_highlight_info
-from .config import get_config_value
-from .ab_logging import ab_logger, ab_logging_middleware, get_ab_stats
-from .model_manager import get_device_status
-from .cache import cache_manager, cache_search_results, get_cached_search_results
-from .rate_limit import check_rate_limit, get_rate_limit_headers, rate_limiter
-from .slo_monitoring import record_api_metric, get_slo_status, get_metrics_summary
-from .dashboard import get_dashboard_data, get_ab_summary, get_cache_summary, get_performance_summary
-from .canary_manager import (is_rerank_enabled_for_user, update_canary_rollout, enable_canary,
+from ..retrieval.rerank import CrossEncoderReranker, mmr_diversify, rerank_with_ce, dedup_by_article, Candidate
+from ..generation.highlight import highlight_results, get_highlight_info
+from ..core.config import get_config_value
+from ..management.ab_logging import ab_logger, ab_logging_middleware, get_ab_stats
+from ..management.model_manager import get_device_status
+from ..core.cache import cache_manager, cache_search_results, get_cached_search_results
+from ..core.rate_limit import check_rate_limit, get_rate_limit_headers, rate_limiter
+from ..core.slo_monitoring import record_api_metric, get_slo_status, get_metrics_summary
+from ..management.dashboard import get_dashboard_data, get_ab_summary, get_cache_summary, get_performance_summary
+from ..management.canary_manager import (is_rerank_enabled_for_user, update_canary_rollout, enable_canary,
                            disable_canary, emergency_stop_canary, clear_emergency_stop, get_canary_status)
-from .runbook import (detect_incident, get_emergency_procedures, execute_emergency_action,
+from ..core.runbook import (detect_incident, get_emergency_procedures, execute_emergency_action,
                      resolve_incident, get_active_incidents, get_incident_summary,
                      auto_detect_incidents, IncidentType, Severity, EmergencyAction)
-from .backup_manager import (create_backup, restore_backup, list_backups, get_backup_statistics,
+from ..management.backup_manager import (create_backup, restore_backup, list_backups, get_backup_statistics,
                            cleanup_old_backups, schedule_backup, BackupInfo, RestoreInfo)
-from .generation import generation_pipeline
-from .openai_client import openai_client
+from ..generation.generation import generation_pipeline
+from ..generation.openai_client import openai_client
 
 # Load environment variables from .env file
 load_dotenv()
