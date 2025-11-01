@@ -114,13 +114,13 @@ uvicorn src.api.chat_api:app --host 0.0.0.0 --port 8080
 python -m src.cli.generate_cli --health
 
 # Single question
-python -m src.cli.generate_cli "VBAで文字列の処理方法を教えて"
+python -m src.cli.generate_cli "Pythonプログラミングの基本を教えて"
 
 # Interactive mode (recommended)
 python -m src.cli.generate_cli --interactive
 
 # With options
-python -m src.cli.generate_cli "質問" --topk 5 --mode hybrid --rerank
+python -m src.cli.generate_cli "Webアプリケーションの作り方を教えて" --topk 5 --mode hybrid --rerank
 ```
 
 #### Other CLI Tools
@@ -142,7 +142,7 @@ python -m src.cli.incident_cli --help
 # Traditional search
 curl -X POST http://localhost:8080/search \
   -H 'Content-Type: application/json' \
-  -d '{"query":"VBA 文字列","topk":5}'
+  -d '{"query":"Python プログラミング","topk":5}'
 
 # Ask with context
 curl -X POST http://localhost:8080/ask \
@@ -155,12 +155,12 @@ curl -X POST http://localhost:8080/ask \
 # Non-streaming generation
 curl -X POST http://localhost:8080/generate \
   -H 'Content-Type: application/json' \
-  -d '{"question":"VBAで文字列の処理方法を教えて","stream":false}'
+  -d '{"question":"Pythonプログラミングの基本を教えて","stream":false}'
 
 # Streaming generation
 curl -X POST http://localhost:8080/generate \
   -H 'Content-Type: application/json' \
-  -d '{"question":"VBAで文字列の処理方法を教えて","stream":true}'
+  -d '{"question":"Pythonプログラミングの基本を教えて","stream":true}'
 ```
 
 ### Monitoring & Admin
@@ -226,7 +226,7 @@ python3 test_mvp4.py
 python -m src.cli.generate_cli --interactive
 
 # Example session:
-# Q: VBAで文字列の処理方法を教えて
+# Q: Pythonプログラミングの基本を教えて
 # A: [Streaming response with citations]
 ```
 
