@@ -13,4 +13,3 @@ janome
 slowapi
 redis
 openai>=1.0.0
-

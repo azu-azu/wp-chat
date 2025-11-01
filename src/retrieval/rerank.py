@@ -1,26 +1,29 @@
 # src/rerank.py
 from __future__ import annotations
+
+import time
 from dataclasses import dataclass
-from typing import List, Tuple, Optional
-import math, time
 from functools import lru_cache
 
 import numpy as np
 from sentence_transformers import CrossEncoder
-from ..management.model_manager import get_optimal_model_config, get_device_status
-from .composite_scoring import calculate_final_score, get_scoring_strategies
+
+from ..management.model_manager import get_optimal_model_config
+from .composite_scoring import calculate_final_score
+
 
 @dataclass
 class Candidate:
-    doc_id: str          # article id or url
+    doc_id: str  # article id or url
     chunk_id: int
     text: str
     hybrid_score: float  # 0-1 normalized before渡し
-    emb: np.ndarray      # dense embedding (for MMR用)
+    emb: np.ndarray  # dense embedding (for MMR用)
     meta: dict
 
+
 class CrossEncoderReranker:
-    def __init__(self, model_name: str = None, device: Optional[str] = None, batch_size: int = None):
+    def __init__(self, model_name: str = None, device: str | None = None, batch_size: int = None):
         # Use model manager for optimal configuration
         if model_name is None or device is None or batch_size is None:
             config = get_optimal_model_config()
@@ -54,11 +57,11 @@ class CrossEncoderReranker:
         # NOTE: 1件だけの推論は低速なのでバッチを優先。これはフォールバック用途。
         return float(self._sigmoid(np.array(self.model.predict([(q, d)]))))  # 0-1
 
-    def score_pairs(self, q: str, docs: List[str]) -> List[float]:
+    def score_pairs(self, q: str, docs: list[str]) -> list[float]:
         pairs = [(q, d) for d in docs]
-        scores: List[float] = []
+        scores: list[float] = []
         for i in range(0, len(pairs), self.batch_size):
-            chunk = pairs[i:i+self.batch_size]
+            chunk = pairs[i : i + self.batch_size]
             s = self.model.predict(chunk)  # raw
             s = self._sigmoid(np.array(s))  # 0-1
             scores.extend(s.tolist())
@@ -66,16 +69,12 @@ class CrossEncoderReranker:
 
     def get_model_info(self) -> dict:
         """Get model information for debugging"""
-        return {
-            "model_name": self.model_name,
-            "device": self.device,
-            "batch_size": self.batch_size
-        }
+        return {"model_name": self.model_name, "device": self.device, "batch_size": self.batch_size}
 
-def mmr_diversify(query_emb: np.ndarray,
-                candidates: List[Candidate],
-                lambda_: float = 0.7,
-                topn: int = 30) -> List[Candidate]:
+
+def mmr_diversify(
+    query_emb: np.ndarray, candidates: list[Candidate], lambda_: float = 0.7, topn: int = 30
+) -> list[Candidate]:
     """
     MMR (Maximal Marginal Relevance)
     relevance: candidate.hybrid_score（0-1）
@@ -84,7 +83,7 @@ def mmr_diversify(query_emb: np.ndarray,
     if not candidates:
         return []
 
-    selected: List[Candidate] = []
+    selected: list[Candidate] = []
     remaining = candidates.copy()
 
     # 事前正規化（安全策）：embはL2正規化前提
@@ -97,7 +96,7 @@ def mmr_diversify(query_emb: np.ndarray,
     selected.append(remaining.pop(0))
 
     while remaining and len(selected) < topn:
-        mmr_scores: List[Tuple[float, Candidate]] = []
+        mmr_scores: list[tuple[float, Candidate]] = []
         for cand in remaining:
             rel = cand.hybrid_score
             div = max(cos(cand.emb, s.emb) for s in selected)  # 既選択との最大類似
@@ -110,12 +109,15 @@ def mmr_diversify(query_emb: np.ndarray,
 
     return selected
 
-def rerank_with_ce(query: str,
-                   diversified: List[Candidate],
-                   ce: CrossEncoderReranker,
-                   topk: int = 10,
-                   timeout_sec: float = 5.0,
-                   scoring_strategy: str = "default") -> List[Candidate]:
+
+def rerank_with_ce(
+    query: str,
+    diversified: list[Candidate],
+    ce: CrossEncoderReranker,
+    topk: int = 10,
+    timeout_sec: float = 5.0,
+    scoring_strategy: str = "default",
+) -> list[Candidate]:
     if not diversified:
         return []
 
@@ -148,7 +150,8 @@ def rerank_with_ce(query: str,
             c.meta["ce_error"] = str(e)
         return sorted(diversified, key=lambda c: c.hybrid_score, reverse=True)[:topk]
 
-def dedup_by_article(candidates: List[Candidate], limit_per_article: int = 5) -> List[Candidate]:
+
+def dedup_by_article(candidates: list[Candidate], limit_per_article: int = 5) -> list[Candidate]:
     """
     Article-level deduplication: limit consecutive hits from same article
     """

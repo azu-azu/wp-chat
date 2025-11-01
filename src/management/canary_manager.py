@@ -1,19 +1,20 @@
 # src/canary_manager.py - Canary deployment and feature toggle management
-import json
-import os
-import time
 import hashlib
-from typing import Dict, Any, Optional, List
-from dataclasses import dataclass, asdict
-from datetime import datetime
-import threading
+import json
 import logging
+import os
+import threading
+import time
+from dataclasses import asdict, dataclass
+from typing import Any
 
 logger = logging.getLogger(__name__)
+
 
 @dataclass
 class CanaryConfig:
     """Canary deployment configuration"""
+
     enabled: bool = False
     rollout_percentage: float = 0.0  # 0.0 to 1.0
     user_seed: str = "default_seed"
@@ -24,9 +25,11 @@ class CanaryConfig:
     last_updated: float = 0.0
     updated_by: str = "system"
 
+
 @dataclass
 class CanaryMetrics:
     """Canary deployment metrics"""
+
     timestamp: float
     total_requests: int
     rerank_enabled_requests: int
@@ -38,15 +41,19 @@ class CanaryMetrics:
     p95_latency_enabled: float
     p95_latency_disabled: float
 
+
 class CanaryManager:
     """Manages canary deployment and feature toggles"""
 
-    def __init__(self, config_file: str = "logs/canary_config.json",
-                 metrics_file: str = "logs/canary_metrics.jsonl"):
+    def __init__(
+        self,
+        config_file: str = "logs/canary_config.json",
+        metrics_file: str = "logs/canary_metrics.jsonl",
+    ):
         self.config_file = config_file
         self.metrics_file = metrics_file
         self.config = CanaryConfig()
-        self.metrics_buffer: List[CanaryMetrics] = []
+        self.metrics_buffer: list[CanaryMetrics] = []
         self.lock = threading.Lock()
         self._ensure_logs_dir()
         self._load_config()
@@ -64,7 +71,7 @@ class CanaryManager:
         """Load canary configuration from file"""
         try:
             if os.path.exists(self.config_file):
-                with open(self.config_file, 'r') as f:
+                with open(self.config_file) as f:
                     data = json.load(f)
                     self.config = CanaryConfig(**data)
                 logger.info(f"Loaded canary config: {self.config.rollout_percentage:.1%} rollout")
@@ -77,7 +84,7 @@ class CanaryManager:
     def _save_config(self):
         """Save canary configuration to file"""
         try:
-            with open(self.config_file, 'w') as f:
+            with open(self.config_file, "w") as f:
                 json.dump(asdict(self.config), f, indent=2)
         except Exception as e:
             logger.error(f"Failed to save canary config: {e}")
@@ -111,7 +118,7 @@ class CanaryManager:
         combined = f"{user_id}:{self.config.user_seed}"
         hash_obj = hashlib.md5(combined.encode())
         # Convert to float between 0 and 1
-        return int(hash_obj.hexdigest()[:8], 16) / 0xffffffff
+        return int(hash_obj.hexdigest()[:8], 16) / 0xFFFFFFFF
 
     def update_rollout_percentage(self, percentage: float, updated_by: str = "admin"):
         """Update rollout percentage (0.0 to 1.0)"""
@@ -153,13 +160,19 @@ class CanaryManager:
 
             logger.info(f"Emergency stop cleared by {updated_by}")
 
-    def get_config(self) -> Dict[str, Any]:
+    def get_config(self) -> dict[str, Any]:
         """Get current canary configuration"""
         with self.lock:
             return asdict(self.config)
 
-    def record_canary_metric(self, user_id: str, rerank_enabled: bool,
-                           latency_ms: int, status_code: int, error_message: Optional[str] = None):
+    def record_canary_metric(
+        self,
+        user_id: str,
+        rerank_enabled: bool,
+        latency_ms: int,
+        status_code: int,
+        error_message: str | None = None,
+    ):
         """Record a canary deployment metric"""
         # This will be called by the API to track canary performance
         pass  # Implementation will be added when integrating with API
@@ -205,28 +218,30 @@ class CanaryManager:
 
         return error_rate > self.config.auto_rollback_threshold
 
-    def _get_recent_metrics(self, minutes: int = 5) -> List[CanaryMetrics]:
+    def _get_recent_metrics(self, minutes: int = 5) -> list[CanaryMetrics]:
         """Get recent canary metrics"""
         cutoff_time = time.time() - (minutes * 60)
         return [m for m in self.metrics_buffer if m.timestamp >= cutoff_time]
 
-    def get_canary_status(self) -> Dict[str, Any]:
+    def get_canary_status(self) -> dict[str, Any]:
         """Get comprehensive canary deployment status"""
         with self.lock:
             recent_metrics = self._get_recent_metrics(minutes=10)
 
             status = {
                 "config": asdict(self.config),
-                "status": "emergency_stop" if self.config.emergency_stop else
-                         "disabled" if not self.config.enabled else
-                         "active",
+                "status": "emergency_stop"
+                if self.config.emergency_stop
+                else "disabled"
+                if not self.config.enabled
+                else "active",
                 "recent_metrics": [asdict(m) for m in recent_metrics[-5:]],  # Last 5 data points
-                "summary": self._calculate_summary(recent_metrics)
+                "summary": self._calculate_summary(recent_metrics),
             }
 
             return status
 
-    def _calculate_summary(self, metrics: List[CanaryMetrics]) -> Dict[str, Any]:
+    def _calculate_summary(self, metrics: list[CanaryMetrics]) -> dict[str, Any]:
         """Calculate summary statistics from metrics"""
         if not metrics:
             return {"message": "No recent metrics available"}
@@ -239,59 +254,91 @@ class CanaryManager:
             return {"message": "No rerank-enabled requests in recent period"}
 
         # Calculate weighted averages
-        weighted_error_enabled = sum(m.error_rate_enabled * m.rerank_enabled_requests for m in metrics)
-        weighted_error_disabled = sum(m.error_rate_disabled * m.rerank_disabled_requests for m in metrics)
-        weighted_latency_enabled = sum(m.avg_latency_enabled * m.rerank_enabled_requests for m in metrics)
-        weighted_latency_disabled = sum(m.avg_latency_disabled * m.rerank_disabled_requests for m in metrics)
+        weighted_error_enabled = sum(
+            m.error_rate_enabled * m.rerank_enabled_requests for m in metrics
+        )
+        weighted_error_disabled = sum(
+            m.error_rate_disabled * m.rerank_disabled_requests for m in metrics
+        )
+        weighted_latency_enabled = sum(
+            m.avg_latency_enabled * m.rerank_enabled_requests for m in metrics
+        )
+        weighted_latency_disabled = sum(
+            m.avg_latency_disabled * m.rerank_disabled_requests for m in metrics
+        )
 
         return {
             "total_requests": total_requests,
             "rerank_enabled_requests": total_enabled,
             "rerank_disabled_requests": total_disabled,
             "rollout_percentage": total_enabled / total_requests if total_requests > 0 else 0,
-            "avg_error_rate_enabled": weighted_error_enabled / total_enabled if total_enabled > 0 else 0,
-            "avg_error_rate_disabled": weighted_error_disabled / total_disabled if total_disabled > 0 else 0,
-            "avg_latency_enabled": weighted_latency_enabled / total_enabled if total_enabled > 0 else 0,
-            "avg_latency_disabled": weighted_latency_disabled / total_disabled if total_disabled > 0 else 0,
+            "avg_error_rate_enabled": weighted_error_enabled / total_enabled
+            if total_enabled > 0
+            else 0,
+            "avg_error_rate_disabled": weighted_error_disabled / total_disabled
+            if total_disabled > 0
+            else 0,
+            "avg_latency_enabled": weighted_latency_enabled / total_enabled
+            if total_enabled > 0
+            else 0,
+            "avg_latency_disabled": weighted_latency_disabled / total_disabled
+            if total_disabled > 0
+            else 0,
             "performance_impact": {
-                "latency_change_pct": ((weighted_latency_enabled / total_enabled) -
-                                      (weighted_latency_disabled / total_disabled)) /
-                                     (weighted_latency_disabled / total_disabled) * 100
-                                     if total_disabled > 0 and weighted_latency_disabled > 0 else 0,
-                "error_rate_change_pct": ((weighted_error_enabled / total_enabled) -
-                                        (weighted_error_disabled / total_disabled)) /
-                                       (weighted_error_disabled / total_disabled) * 100
-                                       if total_disabled > 0 and weighted_error_disabled > 0 else 0
-            }
+                "latency_change_pct": (
+                    (weighted_latency_enabled / total_enabled)
+                    - (weighted_latency_disabled / total_disabled)
+                )
+                / (weighted_latency_disabled / total_disabled)
+                * 100
+                if total_disabled > 0 and weighted_latency_disabled > 0
+                else 0,
+                "error_rate_change_pct": (
+                    (weighted_error_enabled / total_enabled)
+                    - (weighted_error_disabled / total_disabled)
+                )
+                / (weighted_error_disabled / total_disabled)
+                * 100
+                if total_disabled > 0 and weighted_error_disabled > 0
+                else 0,
+            },
         }
+
 
 # Global canary manager instance
 canary_manager = CanaryManager()
+
 
 def is_rerank_enabled_for_user(user_id: str) -> bool:
     """Check if rerank should be enabled for a user"""
     return canary_manager.is_rerank_enabled_for_user(user_id)
 
+
 def update_canary_rollout(percentage: float, updated_by: str = "admin"):
     """Update canary rollout percentage"""
     canary_manager.update_rollout_percentage(percentage, updated_by)
+
 
 def enable_canary(percentage: float = 0.1, updated_by: str = "admin"):
     """Enable canary deployment"""
     canary_manager.enable_canary(percentage, updated_by)
 
+
 def disable_canary(updated_by: str = "admin"):
     """Disable canary deployment"""
     canary_manager.disable_canary(updated_by)
+
 
 def emergency_stop_canary(updated_by: str = "admin"):
     """Emergency stop canary deployment"""
     canary_manager.emergency_stop(updated_by)
 
+
 def clear_emergency_stop(updated_by: str = "admin"):
     """Clear emergency stop"""
     canary_manager.clear_emergency_stop(updated_by)
 
-def get_canary_status() -> Dict[str, Any]:
+
+def get_canary_status() -> dict[str, Any]:
     """Get canary deployment status"""
     return canary_manager.get_canary_status()

@@ -1,7 +1,6 @@
 # src/prompts.py - Prompt engineering for RAG generation
-import json
-from typing import List, Dict, Any
-from ..core.config import get_config_value
+from typing import Any
+
 
 def build_system_prompt() -> str:
     """Build the TsukiUsagi system prompt"""
@@ -23,15 +22,16 @@ Content: ...
 
 Answer the user's question using ONLY the provided context. Always include citations."""
 
-def build_user_prompt(question: str, docs: List[Dict[str, Any]]) -> str:
+
+def build_user_prompt(question: str, docs: list[dict[str, Any]]) -> str:
     """Build user prompt with context injection"""
     context_blocks = []
 
     for i, doc in enumerate(docs, 1):
         # Extract relevant fields
-        title = doc.get('title', 'Unknown Title')
-        url = doc.get('url', '')
-        snippet = doc.get('snippet', '')
+        title = doc.get("title", "Unknown Title")
+        url = doc.get("url", "")
+        snippet = doc.get("snippet", "")
 
         # Format context block
         context_block = f"[{i}] Title: {title}\n"
@@ -57,39 +57,46 @@ Rules:
 - Cite sources using [[1]], [[2]] format
 - If context doesn't contain enough information, say so"""
 
-def build_messages(question: str, docs: List[Dict[str, Any]]) -> List[Dict[str, str]]:
+
+def build_messages(question: str, docs: list[dict[str, Any]]) -> list[dict[str, str]]:
     """Build OpenAI messages format"""
     return [
         {"role": "system", "content": build_system_prompt()},
-        {"role": "user", "content": build_user_prompt(question, docs)}
+        {"role": "user", "content": build_user_prompt(question, docs)},
     ]
 
-def build_fallback_prompt(question: str) -> List[Dict[str, str]]:
+
+def build_fallback_prompt(question: str) -> list[dict[str, str]]:
     """Build fallback prompt when no context is available"""
     return [
         {"role": "system", "content": build_system_prompt()},
-        {"role": "user", "content": f"""Q: {question}
+        {
+            "role": "user",
+            "content": f"""Q: {question}
 
-No relevant context was found for this question. Please respond politely that you don't have enough information to answer this question accurately."""}
+No relevant context was found for this question. Please respond politely that you don't have enough information to answer this question accurately.""",
+        },
     ]
 
-def extract_citations_from_text(text: str) -> List[int]:
+
+def extract_citations_from_text(text: str) -> list[int]:
     """Extract citation numbers from text like [[1]], [[2]], [[1,2]]"""
     import re
 
     # Find all citation patterns
-    citation_pattern = r'\[\[(\d+(?:,\d+)*)\]\]'
+    citation_pattern = r"\[\[(\d+(?:,\d+)*)\]\]"
     matches = re.findall(citation_pattern, text)
 
     citations = set()
     for match in matches:
         # Handle both single citations [[1]] and multiple [[1,2]]
-        numbers = [int(x.strip()) for x in match.split(',')]
+        numbers = [int(x.strip()) for x in match.split(",")]
         citations.update(numbers)
 
     return sorted(list(citations))
 
-def validate_citations(text: str, num_docs: int) -> Dict[str, Any]:
+
+def validate_citations(text: str, num_docs: int) -> dict[str, Any]:
     """Validate citations in the generated text"""
     citations = extract_citations_from_text(text)
 
@@ -104,28 +111,30 @@ def validate_citations(text: str, num_docs: int) -> Dict[str, Any]:
         "invalid_citations": invalid_citations,
         "has_citations": has_citations,
         "citation_count": len(citations),
-        "is_valid": len(invalid_citations) == 0
+        "is_valid": len(invalid_citations) == 0,
     }
 
-def format_references(docs: List[Dict[str, Any]]) -> List[Dict[str, str]]:
+
+def format_references(docs: list[dict[str, Any]]) -> list[dict[str, str]]:
     """Format references for the response"""
     references = []
 
     for i, doc in enumerate(docs, 1):
         ref = {
             "id": i,
-            "title": doc.get('title', 'Unknown Title'),
-            "url": doc.get('url', ''),
-            "post_id": doc.get('post_id', ''),
-            "chunk_id": doc.get('chunk_id', '')
+            "title": doc.get("title", "Unknown Title"),
+            "url": doc.get("url", ""),
+            "post_id": doc.get("post_id", ""),
+            "chunk_id": doc.get("chunk_id", ""),
         }
         references.append(ref)
 
     return references
 
-def get_prompt_stats(messages: List[Dict[str, str]]) -> Dict[str, int]:
+
+def get_prompt_stats(messages: list[dict[str, str]]) -> dict[str, int]:
     """Get token count estimation for prompt"""
-    total_chars = sum(len(msg['content']) for msg in messages)
+    total_chars = sum(len(msg["content"]) for msg in messages)
 
     # Rough estimation: ~4 chars per token for Japanese/English mixed text
     estimated_tokens = total_chars // 4
@@ -133,6 +142,6 @@ def get_prompt_stats(messages: List[Dict[str, str]]) -> Dict[str, int]:
     return {
         "total_chars": total_chars,
         "estimated_tokens": estimated_tokens,
-        "system_tokens": len(messages[0]['content']) // 4 if messages else 0,
-        "user_tokens": len(messages[1]['content']) // 4 if len(messages) > 1 else 0
+        "system_tokens": len(messages[0]["content"]) // 4 if messages else 0,
+        "user_tokens": len(messages[1]["content"]) // 4 if len(messages) > 1 else 0,
     }

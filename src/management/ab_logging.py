@@ -1,15 +1,17 @@
 # src/logging.py - A/B logging and metrics collection
 import json
-import time
-import os
-from datetime import datetime
-from typing import Dict, Any, Optional
-from fastapi import Request, Response
 import logging
+import os
+import time
+from datetime import datetime
+from typing import Any
+
+from fastapi import Request
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
 
 class ABLogger:
     def __init__(self, log_file: str = "logs/ab_metrics.jsonl"):
@@ -20,15 +22,17 @@ class ABLogger:
         """Ensure log directory exists"""
         os.makedirs(os.path.dirname(self.log_file), exist_ok=True)
 
-    def log_search_metrics(self,
-                        query: str,
-                        rerank_enabled: bool,
-                        latency_ms: float,
-                        result_count: int,
-                        mode: str = "hybrid",
-                        topk: int = 5,
-                        user_agent: Optional[str] = None,
-                        ip_address: Optional[str] = None):
+    def log_search_metrics(
+        self,
+        query: str,
+        rerank_enabled: bool,
+        latency_ms: float,
+        result_count: int,
+        mode: str = "hybrid",
+        topk: int = 5,
+        user_agent: str | None = None,
+        ip_address: str | None = None,
+    ):
         """Log A/B search metrics"""
 
         log_entry = {
@@ -41,21 +45,23 @@ class ABLogger:
             "latency_ms": round(latency_ms, 2),
             "result_count": result_count,
             "user_agent": user_agent,
-            "ip_address": ip_address
+            "ip_address": ip_address,
         }
 
         self._write_log(log_entry)
 
-    def log_ask_metrics(self,
-                    question: str,
-                    rerank_enabled: bool,
-                    highlight_enabled: bool,
-                    latency_ms: float,
-                    result_count: int,
-                    mode: str = "hybrid",
-                    topk: int = 5,
-                    user_agent: Optional[str] = None,
-                    ip_address: Optional[str] = None):
+    def log_ask_metrics(
+        self,
+        question: str,
+        rerank_enabled: bool,
+        highlight_enabled: bool,
+        latency_ms: float,
+        result_count: int,
+        mode: str = "hybrid",
+        topk: int = 5,
+        user_agent: str | None = None,
+        ip_address: str | None = None,
+    ):
         """Log A/B ask metrics"""
 
         log_entry = {
@@ -69,12 +75,12 @@ class ABLogger:
             "latency_ms": round(latency_ms, 2),
             "result_count": result_count,
             "user_agent": user_agent,
-            "ip_address": ip_address
+            "ip_address": ip_address,
         }
 
         self._write_log(log_entry)
 
-    def _write_log(self, log_entry: Dict[str, Any]):
+    def _write_log(self, log_entry: dict[str, Any]):
         """Write log entry to file"""
         try:
             with open(self.log_file, "a", encoding="utf-8") as f:
@@ -82,8 +88,10 @@ class ABLogger:
         except Exception as e:
             logger.error(f"Failed to write log entry: {e}")
 
+
 # Global logger instance
 ab_logger = ABLogger()
+
 
 async def ab_logging_middleware(request: Request, call_next):
     """FastAPI middleware for A/B logging"""
@@ -112,7 +120,7 @@ async def ab_logging_middleware(request: Request, call_next):
                 mode=query_params.get("mode", "hybrid"),
                 topk=int(query_params.get("topk", 5)),
                 user_agent=user_agent,
-                ip_address=client_ip
+                ip_address=client_ip,
             )
         elif path == "/ask":
             # For POST requests, we'll need to extract from request body
@@ -124,7 +132,8 @@ async def ab_logging_middleware(request: Request, call_next):
 
     return response
 
-def get_ab_stats(days: int = 7) -> Dict[str, Any]:
+
+def get_ab_stats(days: int = 7) -> dict[str, Any]:
     """Get A/B statistics from logs"""
     try:
         stats = {
@@ -134,7 +143,7 @@ def get_ab_stats(days: int = 7) -> Dict[str, Any]:
             "avg_latency_rerank": 0,
             "avg_latency_no_rerank": 0,
             "avg_result_count": 0,
-            "queries": {}
+            "queries": {},
         }
 
         if not os.path.exists(ab_logger.log_file):
@@ -144,7 +153,7 @@ def get_ab_stats(days: int = 7) -> Dict[str, Any]:
         no_rerank_latencies = []
         result_counts = []
 
-        with open(ab_logger.log_file, "r", encoding="utf-8") as f:
+        with open(ab_logger.log_file, encoding="utf-8") as f:
             for line in f:
                 try:
                     entry = json.loads(line.strip())
@@ -172,7 +181,9 @@ def get_ab_stats(days: int = 7) -> Dict[str, Any]:
         if rerank_latencies:
             stats["avg_latency_rerank"] = round(sum(rerank_latencies) / len(rerank_latencies), 2)
         if no_rerank_latencies:
-            stats["avg_latency_no_rerank"] = round(sum(no_rerank_latencies) / len(no_rerank_latencies), 2)
+            stats["avg_latency_no_rerank"] = round(
+                sum(no_rerank_latencies) / len(no_rerank_latencies), 2
+            )
         if result_counts:
             stats["avg_result_count"] = round(sum(result_counts) / len(result_counts), 2)
 

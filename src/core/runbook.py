@@ -1,26 +1,29 @@
 # src/runbook.py - Incident response runbook and emergency procedures
 import json
-import os
-import time
-import subprocess
-import requests
-from typing import Dict, List, Any, Optional, Tuple
-from dataclasses import dataclass, asdict
-from datetime import datetime, timedelta
-from enum import Enum
 import logging
+import os
+import subprocess
+import time
+from dataclasses import asdict, dataclass
+from datetime import datetime
+from enum import Enum
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
+
 class Severity(Enum):
     """Incident severity levels"""
+
     LOW = "low"
     MEDIUM = "medium"
     HIGH = "high"
     CRITICAL = "critical"
 
+
 class IncidentType(Enum):
     """Types of incidents"""
+
     HIGH_LATENCY = "high_latency"
     HIGH_ERROR_RATE = "high_error_rate"
     MODEL_FAILURE = "model_failure"
@@ -31,39 +34,47 @@ class IncidentType(Enum):
     CANARY_FAILURE = "canary_failure"
     UNKNOWN = "unknown"
 
+
 @dataclass
 class Incident:
     """Incident record"""
+
     incident_id: str
     incident_type: IncidentType
     severity: Severity
     detected_at: float
-    resolved_at: Optional[float] = None
+    resolved_at: float | None = None
     description: str = ""
-    affected_components: List[str] = None
-    actions_taken: List[str] = None
+    affected_components: list[str] = None
+    actions_taken: list[str] = None
     resolution_notes: str = ""
     assigned_to: str = ""
+
 
 @dataclass
 class EmergencyAction:
     """Emergency action to take"""
+
     action_id: str
     name: str
     description: str
     command: str
-    parameters: Dict[str, Any] = None
+    parameters: dict[str, Any] = None
     requires_confirmation: bool = False
     estimated_time: int = 0  # seconds
+
 
 class IncidentResponseRunbook:
     """Incident response runbook and emergency procedures"""
 
-    def __init__(self, incidents_file: str = "logs/incidents.jsonl",
-                 runbook_file: str = "logs/runbook_config.json"):
+    def __init__(
+        self,
+        incidents_file: str = "logs/incidents.jsonl",
+        runbook_file: str = "logs/runbook_config.json",
+    ):
         self.incidents_file = incidents_file
         self.runbook_file = runbook_file
-        self.incidents: List[Incident] = []
+        self.incidents: list[Incident] = []
         self._ensure_logs_dir()
         self._load_incidents()
         self._initialize_runbook()
@@ -77,7 +88,7 @@ class IncidentResponseRunbook:
         """Load incident history"""
         try:
             if os.path.exists(self.incidents_file):
-                with open(self.incidents_file, 'r') as f:
+                with open(self.incidents_file) as f:
                     for line in f:
                         data = json.loads(line.strip())
                         incident = Incident(**data)
@@ -92,10 +103,10 @@ class IncidentResponseRunbook:
         try:
             incident_dict = asdict(incident)
             # Convert enums to strings for JSON serialization
-            incident_dict['incident_type'] = incident.incident_type.value
-            incident_dict['severity'] = incident.severity.value
-            with open(self.incidents_file, 'a') as f:
-                f.write(json.dumps(incident_dict) + '\n')
+            incident_dict["incident_type"] = incident.incident_type.value
+            incident_dict["severity"] = incident.severity.value
+            with open(self.incidents_file, "a") as f:
+                f.write(json.dumps(incident_dict) + "\n")
         except Exception as e:
             logger.error(f"Failed to save incident: {e}")
 
@@ -109,7 +120,7 @@ class IncidentResponseRunbook:
                     description="Temporarily disable reranking to reduce latency",
                     command="curl -X POST http://localhost:8080/admin/canary/disable",
                     requires_confirmation=True,
-                    estimated_time=30
+                    estimated_time=30,
                 ),
                 EmergencyAction(
                     action_id="clear_cache",
@@ -117,7 +128,7 @@ class IncidentResponseRunbook:
                     description="Clear all cached data to free up resources",
                     command="curl -X POST http://localhost:8080/admin/cache/clear",
                     requires_confirmation=True,
-                    estimated_time=60
+                    estimated_time=60,
                 ),
                 EmergencyAction(
                     action_id="restart_service",
@@ -125,8 +136,8 @@ class IncidentResponseRunbook:
                     description="Restart the API service to clear memory issues",
                     command="pkill -f uvicorn && sleep 5 && uvicorn src.chat_api:app --host 0.0.0.0 --port 8080 --reload &",
                     requires_confirmation=True,
-                    estimated_time=120
-                )
+                    estimated_time=120,
+                ),
             ],
             IncidentType.HIGH_ERROR_RATE: [
                 EmergencyAction(
@@ -135,7 +146,7 @@ class IncidentResponseRunbook:
                     description="Immediately disable all advanced features",
                     command="curl -X POST http://localhost:8080/admin/canary/emergency-stop",
                     requires_confirmation=True,
-                    estimated_time=30
+                    estimated_time=30,
                 ),
                 EmergencyAction(
                     action_id="check_logs",
@@ -143,7 +154,7 @@ class IncidentResponseRunbook:
                     description="Examine recent error logs for root cause",
                     command="tail -n 100 logs/api_errors.log",
                     requires_confirmation=False,
-                    estimated_time=60
+                    estimated_time=60,
                 ),
                 EmergencyAction(
                     action_id="restart_service",
@@ -151,8 +162,8 @@ class IncidentResponseRunbook:
                     description="Restart the API service",
                     command="pkill -f uvicorn && sleep 5 && uvicorn src.chat_api:app --host 0.0.0.0 --port 8080 --reload &",
                     requires_confirmation=True,
-                    estimated_time=120
-                )
+                    estimated_time=120,
+                ),
             ],
             IncidentType.MODEL_FAILURE: [
                 EmergencyAction(
@@ -161,7 +172,7 @@ class IncidentResponseRunbook:
                     description="Disable Cross-Encoder reranking",
                     command="curl -X POST http://localhost:8080/admin/canary/disable",
                     requires_confirmation=True,
-                    estimated_time=30
+                    estimated_time=30,
                 ),
                 EmergencyAction(
                     action_id="check_model_files",
@@ -169,7 +180,7 @@ class IncidentResponseRunbook:
                     description="Verify model files are accessible",
                     command="ls -la ~/.cache/huggingface/transformers/",
                     requires_confirmation=False,
-                    estimated_time=30
+                    estimated_time=30,
                 ),
                 EmergencyAction(
                     action_id="reload_model",
@@ -177,8 +188,8 @@ class IncidentResponseRunbook:
                     description="Restart service to reload models",
                     command="pkill -f uvicorn && sleep 5 && uvicorn src.chat_api:app --host 0.0.0.0 --port 8080 --reload &",
                     requires_confirmation=True,
-                    estimated_time=180
-                )
+                    estimated_time=180,
+                ),
             ],
             IncidentType.INDEX_CORRUPTION: [
                 EmergencyAction(
@@ -187,7 +198,7 @@ class IncidentResponseRunbook:
                     description="Check if index files are corrupted",
                     command="python -c \"import faiss; idx = faiss.read_index('data/index/wp.faiss'); print(f'Index size: {idx.ntotal}')\"",
                     requires_confirmation=False,
-                    estimated_time=60
+                    estimated_time=60,
                 ),
                 EmergencyAction(
                     action_id="rebuild_index",
@@ -195,7 +206,7 @@ class IncidentResponseRunbook:
                     description="Rebuild the search index from clean data",
                     command="make rebuild-index",
                     requires_confirmation=True,
-                    estimated_time=1800
+                    estimated_time=1800,
                 ),
                 EmergencyAction(
                     action_id="restore_backup",
@@ -203,8 +214,8 @@ class IncidentResponseRunbook:
                     description="Restore index from latest backup",
                     command="cp data/index/wp.faiss.backup data/index/wp.faiss",
                     requires_confirmation=True,
-                    estimated_time=300
-                )
+                    estimated_time=300,
+                ),
             ],
             IncidentType.MEMORY_EXHAUSTION: [
                 EmergencyAction(
@@ -213,7 +224,7 @@ class IncidentResponseRunbook:
                     description="Check current memory usage",
                     command="free -h && ps aux --sort=-%mem | head -10",
                     requires_confirmation=False,
-                    estimated_time=30
+                    estimated_time=30,
                 ),
                 EmergencyAction(
                     action_id="clear_cache",
@@ -221,7 +232,7 @@ class IncidentResponseRunbook:
                     description="Clear all cached data",
                     command="curl -X POST http://localhost:8080/admin/cache/clear",
                     requires_confirmation=True,
-                    estimated_time=60
+                    estimated_time=60,
                 ),
                 EmergencyAction(
                     action_id="restart_service",
@@ -229,8 +240,8 @@ class IncidentResponseRunbook:
                     description="Restart service to free memory",
                     command="pkill -f uvicorn && sleep 5 && uvicorn src.chat_api:app --host 0.0.0.0 --port 8080 --reload &",
                     requires_confirmation=True,
-                    estimated_time=120
-                )
+                    estimated_time=120,
+                ),
             ],
             IncidentType.CACHE_FAILURE: [
                 EmergencyAction(
@@ -239,7 +250,7 @@ class IncidentResponseRunbook:
                     description="Temporarily disable caching",
                     command="curl -X POST http://localhost:8080/admin/cache/disable",
                     requires_confirmation=True,
-                    estimated_time=30
+                    estimated_time=30,
                 ),
                 EmergencyAction(
                     action_id="clear_cache",
@@ -247,7 +258,7 @@ class IncidentResponseRunbook:
                     description="Clear all cached data",
                     command="curl -X POST http://localhost:8080/admin/cache/clear",
                     requires_confirmation=True,
-                    estimated_time=60
+                    estimated_time=60,
                 ),
                 EmergencyAction(
                     action_id="check_cache_dir",
@@ -255,8 +266,8 @@ class IncidentResponseRunbook:
                     description="Check cache directory permissions and space",
                     command="ls -la logs/cache/ && df -h logs/cache/",
                     requires_confirmation=False,
-                    estimated_time=30
-                )
+                    estimated_time=30,
+                ),
             ],
             IncidentType.RATE_LIMIT_ATTACK: [
                 EmergencyAction(
@@ -265,15 +276,15 @@ class IncidentResponseRunbook:
                     description="Check current rate limiting status",
                     command="curl http://localhost:8080/stats/rate-limit",
                     requires_confirmation=False,
-                    estimated_time=30
+                    estimated_time=30,
                 ),
                 EmergencyAction(
                     action_id="adjust_rate_limits",
                     name="Adjust Rate Limits",
                     description="Temporarily lower rate limits",
-                    command="curl -X POST http://localhost:8080/admin/rate-limit/adjust -d '{\"max_requests\": 10, \"window_seconds\": 3600}'",
+                    command='curl -X POST http://localhost:8080/admin/rate-limit/adjust -d \'{"max_requests": 10, "window_seconds": 3600}\'',
                     requires_confirmation=True,
-                    estimated_time=60
+                    estimated_time=60,
                 ),
                 EmergencyAction(
                     action_id="block_attacker",
@@ -281,8 +292,8 @@ class IncidentResponseRunbook:
                     description="Block suspicious IP addresses",
                     command="iptables -A INPUT -s <ATTACKER_IP> -j DROP",
                     requires_confirmation=True,
-                    estimated_time=120
-                )
+                    estimated_time=120,
+                ),
             ],
             IncidentType.CANARY_FAILURE: [
                 EmergencyAction(
@@ -291,7 +302,7 @@ class IncidentResponseRunbook:
                     description="Immediately stop canary deployment",
                     command="curl -X POST http://localhost:8080/admin/canary/emergency-stop",
                     requires_confirmation=True,
-                    estimated_time=30
+                    estimated_time=30,
                 ),
                 EmergencyAction(
                     action_id="disable_canary",
@@ -299,7 +310,7 @@ class IncidentResponseRunbook:
                     description="Disable canary deployment",
                     command="curl -X POST http://localhost:8080/admin/canary/disable",
                     requires_confirmation=True,
-                    estimated_time=30
+                    estimated_time=30,
                 ),
                 EmergencyAction(
                     action_id="check_canary_status",
@@ -307,13 +318,18 @@ class IncidentResponseRunbook:
                     description="Check current canary deployment status",
                     command="curl http://localhost:8080/admin/canary/status",
                     requires_confirmation=False,
-                    estimated_time=30
-                )
-            ]
+                    estimated_time=30,
+                ),
+            ],
         }
 
-    def detect_incident(self, incident_type: IncidentType, severity: Severity,
-                       description: str = "", affected_components: List[str] = None) -> Incident:
+    def detect_incident(
+        self,
+        incident_type: IncidentType,
+        severity: Severity,
+        description: str = "",
+        affected_components: list[str] = None,
+    ) -> Incident:
         """Detect and record a new incident"""
         incident_id = f"incident_{int(time.time())}"
         incident = Incident(
@@ -323,22 +339,24 @@ class IncidentResponseRunbook:
             detected_at=time.time(),
             description=description,
             affected_components=affected_components or [],
-            actions_taken=[]
+            actions_taken=[],
         )
 
         self.incidents.append(incident)
         self._save_incident(incident)
 
-        logger.warning(f"🚨 INCIDENT DETECTED: {incident_id} - {incident_type.value} ({severity.value})")
+        logger.warning(
+            f"🚨 INCIDENT DETECTED: {incident_id} - {incident_type.value} ({severity.value})"
+        )
         return incident
 
-    def get_emergency_procedures(self, incident_type: IncidentType) -> List[EmergencyAction]:
+    def get_emergency_procedures(self, incident_type: IncidentType) -> list[EmergencyAction]:
         """Get emergency procedures for incident type"""
         return self.emergency_procedures.get(incident_type, [])
 
-    def execute_emergency_action(self, action: EmergencyAction,
-                               incident: Incident,
-                               confirm: bool = False) -> Tuple[bool, str]:
+    def execute_emergency_action(
+        self, action: EmergencyAction, incident: Incident, confirm: bool = False
+    ) -> tuple[bool, str]:
         """Execute an emergency action"""
         if action.requires_confirmation and not confirm:
             return False, "Action requires confirmation"
@@ -352,16 +370,26 @@ class IncidentResponseRunbook:
             # Execute command
             if action.command.startswith("curl"):
                 # HTTP request
-                result = subprocess.run(action.command, shell=False,
-                                      capture_output=True, text=True, timeout=action.estimated_time)
+                result = subprocess.run(
+                    action.command,
+                    shell=False,
+                    capture_output=True,
+                    text=True,
+                    timeout=action.estimated_time,
+                )
                 if result.returncode == 0:
                     return True, result.stdout
                 else:
                     return False, result.stderr
             else:
                 # System command
-                result = subprocess.run(action.command, shell=False,
-                                      capture_output=True, text=True, timeout=action.estimated_time)
+                result = subprocess.run(
+                    action.command,
+                    shell=False,
+                    capture_output=True,
+                    text=True,
+                    timeout=action.estimated_time,
+                )
                 if result.returncode == 0:
                     return True, result.stdout
                 else:
@@ -372,8 +400,7 @@ class IncidentResponseRunbook:
         except Exception as e:
             return False, str(e)
 
-    def resolve_incident(self, incident_id: str, resolution_notes: str = "",
-                        assigned_to: str = ""):
+    def resolve_incident(self, incident_id: str, resolution_notes: str = "", assigned_to: str = ""):
         """Mark incident as resolved"""
         for incident in self.incidents:
             if incident.incident_id == incident_id:
@@ -388,16 +415,16 @@ class IncidentResponseRunbook:
                 return True
         return False
 
-    def get_active_incidents(self) -> List[Incident]:
+    def get_active_incidents(self) -> list[Incident]:
         """Get all active (unresolved) incidents"""
         return [inc for inc in self.incidents if inc.resolved_at is None]
 
-    def get_incident_history(self, hours: int = 24) -> List[Incident]:
+    def get_incident_history(self, hours: int = 24) -> list[Incident]:
         """Get incident history for the last N hours"""
         cutoff_time = time.time() - (hours * 3600)
         return [inc for inc in self.incidents if inc.detected_at >= cutoff_time]
 
-    def get_incident_summary(self) -> Dict[str, Any]:
+    def get_incident_summary(self) -> dict[str, Any]:
         """Get incident summary statistics"""
         active_incidents = self.get_active_incidents()
         recent_incidents = self.get_incident_history(24)
@@ -420,10 +447,10 @@ class IncidentResponseRunbook:
             "severity_breakdown": severity_counts,
             "type_breakdown": type_counts,
             "active_incidents_list": [asdict(inc) for inc in active_incidents],
-            "recent_incidents_list": [asdict(inc) for inc in recent_incidents[-10:]]  # Last 10
+            "recent_incidents_list": [asdict(inc) for inc in recent_incidents[-10:]],  # Last 10
         }
 
-    def auto_detect_incidents(self, slo_status: Dict[str, Any]) -> List[Incident]:
+    def auto_detect_incidents(self, slo_status: dict[str, Any]) -> list[Incident]:
         """Automatically detect incidents from SLO status"""
         detected_incidents = []
 
@@ -445,7 +472,10 @@ class IncidentResponseRunbook:
                 if "latency" in violation_type.lower():
                     incident_type = IncidentType.HIGH_LATENCY
                     severity = Severity.HIGH
-                elif "success_rate" in violation_type.lower() or "error_rate" in violation_type.lower():
+                elif (
+                    "success_rate" in violation_type.lower()
+                    or "error_rate" in violation_type.lower()
+                ):
                     incident_type = IncidentType.HIGH_ERROR_RATE
                     severity = Severity.CRITICAL
                 elif "fallback" in violation_type.lower():
@@ -453,46 +483,61 @@ class IncidentResponseRunbook:
                     severity = Severity.HIGH
 
             if incident_type != IncidentType.UNKNOWN:
-                description = f"SLO violations detected for {endpoint}: " + "; ".join([v.get("message", "") for v in violations])
+                description = f"SLO violations detected for {endpoint}: " + "; ".join(
+                    [v.get("message", "") for v in violations]
+                )
                 incident = self.detect_incident(
                     incident_type=incident_type,
                     severity=severity,
                     description=description,
-                    affected_components=[endpoint]
+                    affected_components=[endpoint],
                 )
                 detected_incidents.append(incident)
 
         return detected_incidents
 
+
 # Global runbook instance
 runbook = IncidentResponseRunbook()
 
-def detect_incident(incident_type: IncidentType, severity: Severity,
-                   description: str = "", affected_components: List[str] = None) -> Incident:
+
+def detect_incident(
+    incident_type: IncidentType,
+    severity: Severity,
+    description: str = "",
+    affected_components: list[str] = None,
+) -> Incident:
     """Detect and record a new incident"""
     return runbook.detect_incident(incident_type, severity, description, affected_components)
 
-def get_emergency_procedures(incident_type: IncidentType) -> List[EmergencyAction]:
+
+def get_emergency_procedures(incident_type: IncidentType) -> list[EmergencyAction]:
     """Get emergency procedures for incident type"""
     return runbook.get_emergency_procedures(incident_type)
 
-def execute_emergency_action(action: EmergencyAction, incident: Incident,
-                           confirm: bool = False) -> Tuple[bool, str]:
+
+def execute_emergency_action(
+    action: EmergencyAction, incident: Incident, confirm: bool = False
+) -> tuple[bool, str]:
     """Execute an emergency action"""
     return runbook.execute_emergency_action(action, incident, confirm)
+
 
 def resolve_incident(incident_id: str, resolution_notes: str = "", assigned_to: str = ""):
     """Mark incident as resolved"""
     return runbook.resolve_incident(incident_id, resolution_notes, assigned_to)
 
-def get_active_incidents() -> List[Incident]:
+
+def get_active_incidents() -> list[Incident]:
     """Get all active incidents"""
     return runbook.get_active_incidents()
 
-def get_incident_summary() -> Dict[str, Any]:
+
+def get_incident_summary() -> dict[str, Any]:
     """Get incident summary"""
     return runbook.get_incident_summary()
 
-def auto_detect_incidents(slo_status: Dict[str, Any]) -> List[Incident]:
+
+def auto_detect_incidents(slo_status: dict[str, Any]) -> list[Incident]:
     """Automatically detect incidents from SLO status"""
     return runbook.auto_detect_incidents(slo_status)

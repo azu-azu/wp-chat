@@ -1,11 +1,11 @@
 # src/cache.py - Advanced caching functionality
-import time
 import hashlib
 import json
 import os
-from typing import Any, Optional, Dict, List
+import time
 from functools import wraps
-import pickle
+from typing import Any
+
 
 class CacheManager:
     """Advanced cache manager with TTL and size limits"""
@@ -32,7 +32,7 @@ class CacheManager:
         hash_key = hashlib.md5(key.encode()).hexdigest()
         return os.path.join(self.cache_dir, f"{hash_key}.meta")
 
-    def _is_expired(self, metadata: Dict) -> bool:
+    def _is_expired(self, metadata: dict) -> bool:
         """Check if cache entry is expired"""
         if "expires_at" not in metadata:
             return True
@@ -47,7 +47,7 @@ class CacheManager:
             if filename.endswith(".meta"):
                 meta_path = os.path.join(self.cache_dir, filename)
                 try:
-                    with open(meta_path, 'r') as f:
+                    with open(meta_path) as f:
                         metadata = json.load(f)
                     if self._is_expired(metadata):
                         cache_path = meta_path.replace(".meta", ".cache")
@@ -83,7 +83,7 @@ class CacheManager:
                 meta_path = file_path.replace(".cache", ".meta")
                 if os.path.exists(meta_path):
                     try:
-                        with open(meta_path, 'r') as f:
+                        with open(meta_path) as f:
                             metadata = json.load(f)
                         cache_files.append((file_path, meta_path, metadata.get("created_at", 0)))
                     except (json.JSONDecodeError, KeyError):
@@ -105,7 +105,7 @@ class CacheManager:
             except FileNotFoundError:
                 continue
 
-    def get(self, key: str) -> Optional[Any]:
+    def get(self, key: str) -> Any | None:
         """Get value from cache"""
         cache_path = self._get_cache_path(key)
         meta_path = self._get_metadata_path(key)
@@ -115,7 +115,7 @@ class CacheManager:
 
         try:
             # Check metadata
-            with open(meta_path, 'r') as f:
+            with open(meta_path) as f:
                 metadata = json.load(f)
 
             if self._is_expired(metadata):
@@ -125,7 +125,7 @@ class CacheManager:
                 return None
 
             # Load cached data
-            with open(cache_path, 'r', encoding='utf-8') as f:
+            with open(cache_path, encoding="utf-8") as f:
                 return json.load(f)
 
         except (json.JSONDecodeError, FileNotFoundError):
@@ -149,7 +149,7 @@ class CacheManager:
             meta_path = self._get_metadata_path(key)
 
             # Save data
-            with open(cache_path, 'w', encoding='utf-8') as f:
+            with open(cache_path, "w", encoding="utf-8") as f:
                 json.dump(value, f)
 
             # Save metadata
@@ -157,10 +157,10 @@ class CacheManager:
                 "created_at": time.time(),
                 "expires_at": time.time() + ttl_seconds,
                 "key": key,
-                "size": os.path.getsize(cache_path)
+                "size": os.path.getsize(cache_path),
             }
 
-            with open(meta_path, 'w') as f:
+            with open(meta_path, "w") as f:
                 json.dump(metadata, f)
 
             return True
@@ -193,14 +193,14 @@ class CacheManager:
         except Exception:
             return False
 
-    def get_stats(self) -> Dict[str, Any]:
+    def get_stats(self) -> dict[str, Any]:
         """Get cache statistics"""
         if not os.path.exists(self.cache_dir):
             return {
                 "total_entries": 0,
                 "total_size_mb": 0,
                 "max_size_mb": self.max_size_mb,
-                "hit_rate": 0
+                "hit_rate": 0,
             }
 
         total_entries = 0
@@ -211,7 +211,7 @@ class CacheManager:
             if filename.endswith(".meta"):
                 meta_path = os.path.join(self.cache_dir, filename)
                 try:
-                    with open(meta_path, 'r') as f:
+                    with open(meta_path) as f:
                         metadata = json.load(f)
                     total_entries += 1
                     if not self._is_expired(metadata):
@@ -229,14 +229,17 @@ class CacheManager:
             "expired_entries": expired_entries,
             "total_size_mb": round(total_size / (1024 * 1024), 2),
             "max_size_mb": self.max_size_mb,
-            "utilization_percent": round((total_size / self.max_size_bytes) * 100, 1)
+            "utilization_percent": round((total_size / self.max_size_bytes) * 100, 1),
         }
+
 
 # Global cache instance
 cache_manager = CacheManager()
 
+
 def cached(ttl_seconds: int = 3600, key_prefix: str = ""):
     """Decorator for caching function results"""
+
     def decorator(func):
         @wraps(func)
         def wrapper(*args, **kwargs):
@@ -257,24 +260,29 @@ def cached(ttl_seconds: int = 3600, key_prefix: str = ""):
             return result
 
         return wrapper
+
     return decorator
 
-def cache_search_results(query: str, results: List[Dict], ttl_seconds: int = 1800) -> bool:
+
+def cache_search_results(query: str, results: list[dict], ttl_seconds: int = 1800) -> bool:
     """Cache search results with query-specific TTL"""
     cache_key = f"search:{hashlib.md5(query.encode()).hexdigest()}"
     return cache_manager.set(cache_key, results, ttl_seconds)
 
-def get_cached_search_results(query: str) -> Optional[List[Dict]]:
+
+def get_cached_search_results(query: str) -> list[dict] | None:
     """Get cached search results for query"""
     cache_key = f"search:{hashlib.md5(query.encode()).hexdigest()}"
     return cache_manager.get(cache_key)
+
 
 def cache_embeddings(text: str, embeddings: Any, ttl_seconds: int = 7200) -> bool:
     """Cache embeddings with longer TTL"""
     cache_key = f"embeddings:{hashlib.md5(text.encode()).hexdigest()}"
     return cache_manager.set(cache_key, embeddings, ttl_seconds)
 
-def get_cached_embeddings(text: str) -> Optional[Any]:
+
+def get_cached_embeddings(text: str) -> Any | None:
     """Get cached embeddings for text"""
     cache_key = f"embeddings:{hashlib.md5(text.encode()).hexdigest()}"
     return cache_manager.get(cache_key)

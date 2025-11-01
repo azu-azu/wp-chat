@@ -2,32 +2,29 @@
 # test_mvp4.py - Quick test of MVP4 RAG generation
 import os
 import sys
-import asyncio
 
 # Add src to path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "src"))
+
 
 def test_imports():
     """Test that all modules can be imported"""
     print("🧪 Testing imports...")
 
     try:
-        from src.generation import generation_pipeline
         print("✅ generation.py imported")
 
-        from src.prompts import build_messages, validate_citations
         print("✅ prompts.py imported")
 
-        from src.openai_client import openai_client
         print("✅ openai_client.py imported")
 
-        from src.config import get_config_value
         print("✅ config.py imported")
 
         return True
     except Exception as e:
         print(f"❌ Import error: {e}")
         return False
+
 
 def test_config():
     """Test configuration loading"""
@@ -57,6 +54,7 @@ def test_config():
         print(f"❌ Config error: {e}")
         return False
 
+
 def test_prompt_building():
     """Test prompt building"""
     print("\n💬 Testing prompt building...")
@@ -69,13 +67,13 @@ def test_prompt_building():
             {
                 "title": "Test Document 1",
                 "url": "https://example.com/doc1",
-                "snippet": "This is a test document with relevant information."
+                "snippet": "This is a test document with relevant information.",
             },
             {
                 "title": "Test Document 2",
                 "url": "https://example.com/doc2",
-                "snippet": "Another test document with additional context."
-            }
+                "snippet": "Another test document with additional context.",
+            },
         ]
 
         # Build messages
@@ -98,6 +96,7 @@ def test_prompt_building():
         print(f"❌ Prompt building error: {e}")
         return False
 
+
 def test_context_composition():
     """Test context composition"""
     print("\n📝 Testing context composition...")
@@ -113,7 +112,7 @@ def test_context_composition():
                 "snippet": "This is a long document with lots of content that should be truncated if it exceeds the token limit.",
                 "post_id": "1",
                 "chunk_id": "1",
-                "hybrid_score": 0.95
+                "hybrid_score": 0.95,
             },
             {
                 "title": "Document 2",
@@ -121,8 +120,8 @@ def test_context_composition():
                 "snippet": "Another document with different content.",
                 "post_id": "2",
                 "chunk_id": "1",
-                "hybrid_score": 0.87
-            }
+                "hybrid_score": 0.87,
+            },
         ]
 
         # Process context
@@ -137,6 +136,7 @@ def test_context_composition():
     except Exception as e:
         print(f"❌ Context composition error: {e}")
         return False
+
 
 def test_openai_client_init():
     """Test OpenAI client initialization"""
@@ -154,7 +154,7 @@ def test_openai_client_init():
         print(f"✅ Max tokens: {model_info['max_tokens']}")
 
         # Test if API key is set
-        api_key = os.getenv('OPENAI_API_KEY')
+        api_key = os.getenv("OPENAI_API_KEY")
         if api_key:
             print(f"✅ API key is set (length: {len(api_key)})")
         else:
@@ -164,6 +164,7 @@ def test_openai_client_init():
     except Exception as e:
         print(f"❌ OpenAI client error: {e}")
         return False
+
 
 def main():
     """Run all tests"""
@@ -175,7 +176,7 @@ def main():
         test_config,
         test_prompt_building,
         test_context_composition,
-        test_openai_client_init
+        test_openai_client_init,
     ]
 
     passed = 0
@@ -199,6 +200,7 @@ def main():
     else:
         print("❌ Some tests failed. Check the errors above.")
         return 1
+
 
 if __name__ == "__main__":
     sys.exit(main())

@@ -372,6 +372,10 @@ MIT License - see LICENSE file for details.
 - **[⚙️ 設定ファイル](config.yml)** - アプリケーション設定
 - **[💰 価格設定](pricing.json)** - LLMモデルの価格情報
 
+## 📋 Planning Documents
+
+- **[🔧 改善実装計画 (2025-11-01)](plans/2025-11-01-improvement-plan.md)** - 安定運用に向けたTOP8改善項目
+
 ## 📞 Support
 
 For issues and questions:
