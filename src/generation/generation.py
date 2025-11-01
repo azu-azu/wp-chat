@@ -1,20 +1,22 @@
 # src/generation.py - Core RAG generation module
-import json
-import time
-from typing import List, Dict, Any, Optional, Tuple
 from dataclasses import dataclass
+from typing import Any
+
 from ..core.config import get_config_value
-from .prompts import build_messages, build_fallback_prompt, validate_citations, format_references
+from .prompts import build_fallback_prompt, build_messages, format_references, validate_citations
+
 
 @dataclass
 class GenerationResult:
     """Result of generation process"""
+
     answer: str
-    references: List[Dict[str, str]]
-    metadata: Dict[str, Any]
-    citations: List[int]
+    references: list[dict[str, str]]
+    metadata: dict[str, Any]
+    citations: list[int]
     is_valid: bool
-    error_message: Optional[str] = None
+    error_message: str | None = None
+
 
 class ContextComposer:
     """Compose context from retrieved documents with token budgeting"""
@@ -28,13 +30,15 @@ class ContextComposer:
         """Rough token estimation: ~4 chars per token for Japanese/English"""
         return len(text) // 4
 
-    def deduplicate_by_url(self, docs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    def deduplicate_by_url(self, docs: list[dict[str, Any]]) -> list[dict[str, Any]]:
         """Remove duplicate documents by URL, keeping highest scoring ones"""
         url_map = {}
 
         for doc in docs:
-            url = doc.get('url', '')
-            if url not in url_map or doc.get('hybrid_score', 0) > url_map[url].get('hybrid_score', 0):
+            url = doc.get("url", "")
+            if url not in url_map or doc.get("hybrid_score", 0) > url_map[url].get(
+                "hybrid_score", 0
+            ):
                 url_map[url] = doc
 
         return list(url_map.values())
@@ -49,17 +53,19 @@ class ContextComposer:
         truncated = text[:max_chars]
 
         # Try to end at a sentence boundary
-        last_period = truncated.rfind('。')
-        last_exclamation = truncated.rfind('！')
-        last_question = truncated.rfind('？')
+        last_period = truncated.rfind("。")
+        last_exclamation = truncated.rfind("！")
+        last_question = truncated.rfind("？")
 
         sentence_end = max(last_period, last_exclamation, last_question)
         if sentence_end > max_chars * 0.8:  # Only if we don't lose too much
-            truncated = truncated[:sentence_end + 1]
+            truncated = truncated[: sentence_end + 1]
 
         return truncated + ("…" if len(text) > max_chars else "")
 
-    def compose_context(self, docs: List[Dict[str, Any]]) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
+    def compose_context(
+        self, docs: list[dict[str, Any]]
+    ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
         """Compose context from documents with token budgeting"""
         if not docs:
             return [], {"total_tokens": 0, "chunks_used": 0, "chunks_truncated": 0}
@@ -68,10 +74,10 @@ class ContextComposer:
         unique_docs = self.deduplicate_by_url(docs)
 
         # Sort by hybrid score (descending)
-        unique_docs.sort(key=lambda x: x.get('hybrid_score', 0), reverse=True)
+        unique_docs.sort(key=lambda x: x.get("hybrid_score", 0), reverse=True)
 
         # Limit number of chunks
-        selected_docs = unique_docs[:self.max_chunks]
+        selected_docs = unique_docs[: self.max_chunks]
 
         # Process each document
         processed_docs = []
@@ -80,7 +86,7 @@ class ContextComposer:
 
         for doc in selected_docs:
             # Extract text content
-            text = doc.get('snippet', '') or doc.get('chunk', '')
+            text = doc.get("snippet", "") or doc.get("chunk", "")
             if not text:
                 continue
 
@@ -99,13 +105,13 @@ class ContextComposer:
 
             # Create processed document
             processed_doc = {
-                'title': doc.get('title', 'Unknown Title'),
-                'url': doc.get('url', ''),
-                'snippet': text,
-                'post_id': doc.get('post_id', ''),
-                'chunk_id': doc.get('chunk_id', ''),
-                'hybrid_score': doc.get('hybrid_score', 0),
-                'ce_score': doc.get('ce_score')
+                "title": doc.get("title", "Unknown Title"),
+                "url": doc.get("url", ""),
+                "snippet": text,
+                "post_id": doc.get("post_id", ""),
+                "chunk_id": doc.get("chunk_id", ""),
+                "hybrid_score": doc.get("hybrid_score", 0),
+                "ce_score": doc.get("ce_score"),
             }
 
             processed_docs.append(processed_doc)
@@ -116,10 +122,11 @@ class ContextComposer:
             "chunks_used": len(processed_docs),
             "chunks_truncated": chunks_truncated,
             "original_chunks": len(docs),
-            "unique_chunks": len(unique_docs)
+            "unique_chunks": len(unique_docs),
         }
 
         return processed_docs, metadata
+
 
 class CitationProcessor:
     """Process citations in generated text"""
@@ -127,15 +134,18 @@ class CitationProcessor:
     def __init__(self):
         self.citation_style = get_config_value("generation.citation_style", "bracketed")
 
-    def inject_citations(self, text: str, docs: List[Dict[str, Any]]) -> Tuple[str, List[int]]:
+    def inject_citations(self, text: str, docs: list[dict[str, Any]]) -> tuple[str, list[int]]:
         """Ensure proper citation format in text"""
         # For now, assume the LLM already includes citations
         # This could be enhanced to automatically inject citations if missing
         from .prompts import extract_citations_from_text
+
         citations = extract_citations_from_text(text)
         return text, citations
 
-    def validate_and_fix_citations(self, text: str, docs: List[Dict[str, Any]]) -> Tuple[str, Dict[str, Any]]:
+    def validate_and_fix_citations(
+        self, text: str, docs: list[dict[str, Any]]
+    ) -> tuple[str, dict[str, Any]]:
         """Validate citations and fix if necessary"""
         validation_result = validate_citations(text, len(docs))
 
@@ -145,6 +155,7 @@ class CitationProcessor:
 
         return text, validation_result
 
+
 class GenerationPipeline:
     """Main generation pipeline"""
 
@@ -152,11 +163,15 @@ class GenerationPipeline:
         self.context_composer = ContextComposer()
         self.citation_processor = CitationProcessor()
 
-    def process_retrieval_results(self, docs: List[Dict[str, Any]]) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
+    def process_retrieval_results(
+        self, docs: list[dict[str, Any]]
+    ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
         """Process retrieval results into context"""
         return self.context_composer.compose_context(docs)
 
-    def build_prompt(self, question: str, docs: List[Dict[str, Any]]) -> Tuple[List[Dict[str, str]], Dict[str, Any]]:
+    def build_prompt(
+        self, question: str, docs: list[dict[str, Any]]
+    ) -> tuple[list[dict[str, str]], dict[str, Any]]:
         """Build prompt for LLM"""
         if not docs:
             messages = build_fallback_prompt(question)
@@ -164,20 +179,24 @@ class GenerationPipeline:
         else:
             messages = build_messages(question, docs)
             from .prompts import get_prompt_stats
+
             prompt_stats = get_prompt_stats(messages)
 
         return messages, prompt_stats
 
-    def post_process_response(self, text: str, docs: List[Dict[str, Any]]) -> GenerationResult:
+    def post_process_response(self, text: str, docs: list[dict[str, Any]]) -> GenerationResult:
         """Post-process LLM response"""
         # Process citations
-        processed_text, citation_validation = self.citation_processor.validate_and_fix_citations(text, docs)
+        processed_text, citation_validation = self.citation_processor.validate_and_fix_citations(
+            text, docs
+        )
 
         # Format references
         references = format_references(docs)
 
         # Extract citations
         from .prompts import extract_citations_from_text
+
         citations = extract_citations_from_text(processed_text)
 
         # Build metadata
@@ -185,7 +204,7 @@ class GenerationPipeline:
             "citation_count": len(citations),
             "has_citations": len(citations) > 0,
             "references_count": len(references),
-            "citation_validation": citation_validation
+            "citation_validation": citation_validation,
         }
 
         return GenerationResult(
@@ -193,19 +212,21 @@ class GenerationPipeline:
             references=references,
             metadata=metadata,
             citations=citations,
-            is_valid=citation_validation["is_valid"]
+            is_valid=citation_validation["is_valid"],
         )
 
-    def generate_fallback_response(self, question: str, docs: List[Dict[str, Any]]) -> GenerationResult:
+    def generate_fallback_response(
+        self, question: str, docs: list[dict[str, Any]]
+    ) -> GenerationResult:
         """Generate fallback response when LLM fails"""
         if docs:
             # Return retrieval results with explanation
-            answer = f"申し訳ございませんが、現在AIによる回答生成が利用できません。\n\n関連する情報を以下に示します：\n\n"
+            answer = "申し訳ございませんが、現在AIによる回答生成が利用できません。\n\n関連する情報を以下に示します：\n\n"
 
             for i, doc in enumerate(docs[:3], 1):  # Show top 3
                 answer += f"{i}. **{doc.get('title', 'Unknown Title')}**\n"
                 answer += f"   {doc.get('url', '')}\n"
-                if doc.get('snippet'):
+                if doc.get("snippet"):
                     answer += f"   {doc.get('snippet', '')[:200]}...\n\n"
         else:
             answer = "申し訳ございませんが、ご質問に関連する情報が見つかりませんでした。"
@@ -218,8 +239,9 @@ class GenerationPipeline:
             metadata={"fallback": True, "reason": "llm_unavailable"},
             citations=[],
             is_valid=True,
-            error_message="LLM generation failed, using fallback"
+            error_message="LLM generation failed, using fallback",
         )
+
 
 # Global pipeline instance
 generation_pipeline = GenerationPipeline()

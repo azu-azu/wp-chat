@@ -1,23 +1,20 @@
 # src/backup_manager.py - Backup and restore management system
-import os
-import shutil
-import json
-import time
 import hashlib
-import gzip
-import tarfile
-from typing import Dict, List, Any, Optional, Tuple
-from dataclasses import dataclass, asdict
-from datetime import datetime, timedelta
-from pathlib import Path
+import json
 import logging
-import subprocess
+import os
+import tarfile
+import time
+from dataclasses import asdict, dataclass
+from typing import Any
 
 logger = logging.getLogger(__name__)
+
 
 @dataclass
 class BackupInfo:
     """Backup information record"""
+
     backup_id: str
     backup_type: str  # 'full', 'incremental', 'index', 'cache', 'config'
     created_at: float
@@ -26,31 +23,37 @@ class BackupInfo:
     checksum: str
     status: str  # 'created', 'verified', 'failed', 'expired'
     description: str = ""
-    files: List[str] = None
-    metadata: Dict[str, Any] = None
+    files: list[str] = None
+    metadata: dict[str, Any] = None
+
 
 @dataclass
 class RestoreInfo:
     """Restore operation record"""
+
     restore_id: str
     backup_id: str
     restored_at: float
     status: str  # 'success', 'failed', 'partial'
-    restored_files: List[str] = None
+    restored_files: list[str] = None
     error_message: str = ""
     verification_passed: bool = False
+
 
 class BackupManager:
     """Manages backup and restore operations"""
 
-    def __init__(self, backup_dir: str = "backups",
-                 config_file: str = "logs/backup_config.json",
-                 history_file: str = "logs/backup_history.jsonl"):
+    def __init__(
+        self,
+        backup_dir: str = "backups",
+        config_file: str = "logs/backup_config.json",
+        history_file: str = "logs/backup_history.jsonl",
+    ):
         self.backup_dir = backup_dir
         self.config_file = config_file
         self.history_file = history_file
-        self.backups: List[BackupInfo] = []
-        self.restores: List[RestoreInfo] = []
+        self.backups: list[BackupInfo] = []
+        self.restores: list[RestoreInfo] = []
 
         # Backup configuration
         self.config = {
@@ -59,17 +62,17 @@ class BackupManager:
                 "full_backup_days": 7,  # Full backup every 7 days
                 "incremental_hours": 24,  # Incremental backup every 24 hours
                 "retention_days": 30,  # Keep backups for 30 days
-                "max_backups": 10  # Maximum number of backups to keep
+                "max_backups": 10,  # Maximum number of backups to keep
             },
             "paths": {
                 "index": "data/index/",
                 "cache": "logs/cache/",
                 "config": "config.yml",
-                "logs": "logs/"
+                "logs": "logs/",
             },
             "compression": True,
             "verification": True,
-            "auto_cleanup": True
+            "auto_cleanup": True,
         }
 
         self._ensure_directories()
@@ -86,7 +89,7 @@ class BackupManager:
         """Load backup configuration"""
         try:
             if os.path.exists(self.config_file):
-                with open(self.config_file, 'r') as f:
+                with open(self.config_file) as f:
                     saved_config = json.load(f)
                     self.config.update(saved_config)
             else:
@@ -97,7 +100,7 @@ class BackupManager:
     def _save_config(self):
         """Save backup configuration"""
         try:
-            with open(self.config_file, 'w') as f:
+            with open(self.config_file, "w") as f:
                 json.dump(self.config, f, indent=2)
         except Exception as e:
             logger.error(f"Failed to save backup config: {e}")
@@ -106,13 +109,13 @@ class BackupManager:
         """Load backup history"""
         try:
             if os.path.exists(self.history_file):
-                with open(self.history_file, 'r') as f:
+                with open(self.history_file) as f:
                     for line in f:
                         data = json.loads(line.strip())
-                        if data.get('type') == 'backup':
+                        if data.get("type") == "backup":
                             backup = BackupInfo(**data)
                             self.backups.append(backup)
-                        elif data.get('type') == 'restore':
+                        elif data.get("type") == "restore":
                             restore = RestoreInfo(**data)
                             self.restores.append(restore)
         except Exception as e:
@@ -121,24 +124,18 @@ class BackupManager:
     def _save_backup_record(self, backup: BackupInfo):
         """Save backup record to history"""
         try:
-            record = {
-                "type": "backup",
-                **asdict(backup)
-            }
-            with open(self.history_file, 'a') as f:
-                f.write(json.dumps(record) + '\n')
+            record = {"type": "backup", **asdict(backup)}
+            with open(self.history_file, "a") as f:
+                f.write(json.dumps(record) + "\n")
         except Exception as e:
             logger.error(f"Failed to save backup record: {e}")
 
     def _save_restore_record(self, restore: RestoreInfo):
         """Save restore record to history"""
         try:
-            record = {
-                "type": "restore",
-                **asdict(restore)
-            }
-            with open(self.history_file, 'a') as f:
-                f.write(json.dumps(record) + '\n')
+            record = {"type": "restore", **asdict(restore)}
+            with open(self.history_file, "a") as f:
+                f.write(json.dumps(record) + "\n")
         except Exception as e:
             logger.error(f"Failed to save restore record: {e}")
 
@@ -202,7 +199,7 @@ class BackupManager:
                 if os.path.exists(logs_path):
                     for root, dirs, files in os.walk(logs_path):
                         for file in files:
-                            if not file.endswith('.jsonl'):  # Skip large log files
+                            if not file.endswith(".jsonl"):  # Skip large log files
                                 continue
                             file_path = os.path.join(root, file)
                             files_to_backup.append(file_path)
@@ -232,10 +229,7 @@ class BackupManager:
                 status="created",
                 description=description,
                 files=files_to_backup,
-                metadata={
-                    "backup_path": backup_path,
-                    "compression": self.config["compression"]
-                }
+                metadata={"backup_path": backup_path, "compression": self.config["compression"]},
             )
 
             # Verify backup if enabled
@@ -263,7 +257,7 @@ class BackupManager:
                 file_count=0,
                 checksum="",
                 status="failed",
-                description=f"Failed: {str(e)}"
+                description=f"Failed: {str(e)}",
             )
             self.backups.append(backup)
             self._save_backup_record(backup)
@@ -300,8 +294,9 @@ class BackupManager:
             logger.error(f"Backup verification error: {e}")
             return False
 
-    def restore_backup(self, backup_id: str, target_path: str = None,
-                      verify: bool = True) -> RestoreInfo:
+    def restore_backup(
+        self, backup_id: str, target_path: str = None, verify: bool = True
+    ) -> RestoreInfo:
         """Restore from backup"""
         restore_id = f"restore_{int(time.time())}"
 
@@ -331,7 +326,7 @@ class BackupManager:
                 restored_at=time.time(),
                 status="success",
                 restored_files=[],
-                verification_passed=False
+                verification_passed=False,
             )
 
             # Extract archive with security check
@@ -345,7 +340,7 @@ class BackupManager:
 
                     # Normalize path to prevent traversal
                     member.name = os.path.normpath(member.name)
-                    if member.name.startswith('/') or '..' in member.name:
+                    if member.name.startswith("/") or ".." in member.name:
                         logger.error(f"Normalized unsafe path: {member.name}")
                         raise ValueError(f"Unsafe path detected after normalization: {member.name}")
 
@@ -376,7 +371,7 @@ class BackupManager:
                 restored_at=time.time(),
                 status="failed",
                 error_message=str(e),
-                verification_passed=False
+                verification_passed=False,
             )
             self.restores.append(restore)
             self._save_restore_record(restore)
@@ -393,7 +388,7 @@ class BackupManager:
 
                 # Check if file is readable
                 try:
-                    with open(file_path, 'rb') as f:
+                    with open(file_path, "rb") as f:
                         f.read(1)
                 except Exception as e:
                     logger.error(f"Cannot read restored file {file_path}: {e}")
@@ -405,13 +400,13 @@ class BackupManager:
             logger.error(f"Restore verification error: {e}")
             return False
 
-    def list_backups(self, backup_type: str = None) -> List[BackupInfo]:
+    def list_backups(self, backup_type: str = None) -> list[BackupInfo]:
         """List available backups"""
         if backup_type:
             return [b for b in self.backups if b.backup_type == backup_type]
         return self.backups.copy()
 
-    def get_backup_info(self, backup_id: str) -> Optional[BackupInfo]:
+    def get_backup_info(self, backup_id: str) -> BackupInfo | None:
         """Get backup information"""
         return next((b for b in self.backups if b.backup_id == backup_id), None)
 
@@ -473,7 +468,7 @@ class BackupManager:
         logger.info(f"Cleaned up {deleted_count} old backups")
         return deleted_count
 
-    def get_backup_statistics(self) -> Dict[str, Any]:
+    def get_backup_statistics(self) -> dict[str, Any]:
         """Get backup statistics"""
         total_backups = len(self.backups)
         successful_backups = len([b for b in self.backups if b.status == "verified"])
@@ -503,10 +498,10 @@ class BackupManager:
             "type_breakdown": type_counts,
             "recent_backups_7d": recent_backups,
             "oldest_backup": min(b.created_at for b in self.backups) if self.backups else None,
-            "newest_backup": max(b.created_at for b in self.backups) if self.backups else None
+            "newest_backup": max(b.created_at for b in self.backups) if self.backups else None,
         }
 
-    def schedule_backup(self) -> Optional[BackupInfo]:
+    def schedule_backup(self) -> BackupInfo | None:
         """Schedule automatic backup based on configuration"""
         if not self.config["enabled"]:
             return None
@@ -523,7 +518,9 @@ class BackupManager:
         current_time = time.time()
 
         # Determine backup type
-        if not last_full_backup or (current_time - last_full_backup.created_at) >= (full_backup_days * 24 * 3600):
+        if not last_full_backup or (current_time - last_full_backup.created_at) >= (
+            full_backup_days * 24 * 3600
+        ):
             backup_type = "full"
             description = "Scheduled full backup"
         else:
@@ -536,29 +533,36 @@ class BackupManager:
             logger.error(f"Scheduled backup failed: {e}")
             return None
 
+
 # Global backup manager instance
 backup_manager = BackupManager()
+
 
 def create_backup(backup_type: str = "full", description: str = "") -> BackupInfo:
     """Create a backup"""
     return backup_manager.create_backup(backup_type, description)
 
+
 def restore_backup(backup_id: str, target_path: str = None, verify: bool = True) -> RestoreInfo:
     """Restore from backup"""
     return backup_manager.restore_backup(backup_id, target_path, verify)
 
-def list_backups(backup_type: str = None) -> List[BackupInfo]:
+
+def list_backups(backup_type: str = None) -> list[BackupInfo]:
     """List available backups"""
     return backup_manager.list_backups(backup_type)
 
-def get_backup_statistics() -> Dict[str, Any]:
+
+def get_backup_statistics() -> dict[str, Any]:
     """Get backup statistics"""
     return backup_manager.get_backup_statistics()
+
 
 def cleanup_old_backups() -> int:
     """Clean up old backups"""
     return backup_manager.cleanup_old_backups()
 
-def schedule_backup() -> Optional[BackupInfo]:
+
+def schedule_backup() -> BackupInfo | None:
     """Schedule automatic backup"""
     return backup_manager.schedule_backup()

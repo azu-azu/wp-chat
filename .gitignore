@@ -3,6 +3,7 @@
 .vscode/
 .idea/
 .cursor/
+plans/completed/
 
 # Python
 __pycache__/
@@ -25,4 +26,7 @@ data/
 .ruff_cache/
 coverage.xml
 .coverage*
-
+cache/
+logs/
+backups/
+eval

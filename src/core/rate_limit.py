@@ -1,10 +1,8 @@
 # src/rate_limit.py - Rate limiting functionality
-import time
 import json
 import os
-from typing import Dict, Optional, Tuple
-from collections import defaultdict, deque
-from datetime import datetime, timedelta
+import time
+
 
 class RateLimiter:
     """Rate limiter with sliding window and IP-based tracking"""
@@ -24,7 +22,7 @@ class RateLimiter:
         """Load rate limit data from file"""
         try:
             if os.path.exists(self.rate_limit_file):
-                with open(self.rate_limit_file, 'r') as f:
+                with open(self.rate_limit_file) as f:
                     self.rate_limits = json.load(f)
             else:
                 self.rate_limits = {}
@@ -34,7 +32,7 @@ class RateLimiter:
     def _save_rate_limits(self):
         """Save rate limit data to file"""
         try:
-            with open(self.rate_limit_file, 'w') as f:
+            with open(self.rate_limit_file, "w") as f:
                 json.dump(self.rate_limits, f)
         except Exception as e:
             print(f"Failed to save rate limits: {e}")
@@ -47,12 +45,12 @@ class RateLimiter:
         if client_id in self.rate_limits:
             # Keep only recent entries
             self.rate_limits[client_id] = [
-                entry for entry in self.rate_limits[client_id]
-                if entry > cutoff_time
+                entry for entry in self.rate_limits[client_id] if entry > cutoff_time
             ]
 
-    def is_allowed(self, client_id: str, max_requests: int = 100,
-                   window_seconds: int = 3600) -> Tuple[bool, Dict[str, int]]:
+    def is_allowed(
+        self, client_id: str, max_requests: int = 100, window_seconds: int = 3600
+    ) -> tuple[bool, dict[str, int]]:
         """
         Check if request is allowed based on rate limit
 
@@ -82,7 +80,7 @@ class RateLimiter:
             "limit": max_requests,
             "window_seconds": window_seconds,
             "reset_time": current_time + window_seconds,
-            "remaining": max(0, max_requests - current_requests)
+            "remaining": max(0, max_requests - current_requests),
         }
 
         # Check if under limit
@@ -94,31 +92,23 @@ class RateLimiter:
         else:
             return False, rate_info
 
-    def get_client_stats(self, client_id: str) -> Dict[str, int]:
+    def get_client_stats(self, client_id: str) -> dict[str, int]:
         """Get rate limit statistics for a client"""
         if client_id not in self.rate_limits:
-            return {
-                "requests": 0,
-                "limit": 100,
-                "window_seconds": 3600,
-                "remaining": 100
-            }
+            return {"requests": 0, "limit": 100, "window_seconds": 3600, "remaining": 100}
 
         current_time = time.time()
         window_seconds = 3600  # Default window
         cutoff_time = current_time - window_seconds
 
         # Count recent requests
-        recent_requests = [
-            entry for entry in self.rate_limits[client_id]
-            if entry > cutoff_time
-        ]
+        recent_requests = [entry for entry in self.rate_limits[client_id] if entry > cutoff_time]
 
         return {
             "requests": len(recent_requests),
             "limit": 100,
             "window_seconds": window_seconds,
-            "remaining": max(0, 100 - len(recent_requests))
+            "remaining": max(0, 100 - len(recent_requests)),
         }
 
     def reset_client(self, client_id: str) -> bool:
@@ -131,7 +121,7 @@ class RateLimiter:
         except Exception:
             return False
 
-    def get_global_stats(self) -> Dict[str, any]:
+    def get_global_stats(self) -> dict[str, any]:
         """Get global rate limiting statistics"""
         current_time = time.time()
         window_seconds = 3600
@@ -151,11 +141,13 @@ class RateLimiter:
             "total_clients": total_clients,
             "active_clients": active_clients,
             "total_requests_last_hour": total_requests,
-            "average_requests_per_client": round(total_requests / max(active_clients, 1), 2)
+            "average_requests_per_client": round(total_requests / max(active_clients, 1), 2),
         }
+
 
 # Global rate limiter instance
 rate_limiter = RateLimiter()
+
 
 def get_client_id(request) -> str:
     """Extract client ID from request (IP address)"""
@@ -171,17 +163,20 @@ def get_client_id(request) -> str:
     # Fallback to direct client IP
     return request.client.host
 
-def check_rate_limit(request, max_requests: int = 100,
-                    window_seconds: int = 3600) -> Tuple[bool, Dict[str, int]]:
+
+def check_rate_limit(
+    request, max_requests: int = 100, window_seconds: int = 3600
+) -> tuple[bool, dict[str, int]]:
     """Check rate limit for a request"""
     client_id = get_client_id(request)
     return rate_limiter.is_allowed(client_id, max_requests, window_seconds)
 
-def get_rate_limit_headers(rate_info: Dict[str, int]) -> Dict[str, str]:
+
+def get_rate_limit_headers(rate_info: dict[str, int]) -> dict[str, str]:
     """Generate rate limit headers for HTTP response"""
     return {
         "X-RateLimit-Limit": str(rate_info["limit"]),
         "X-RateLimit-Remaining": str(rate_info["remaining"]),
         "X-RateLimit-Reset": str(int(rate_info["reset_time"])),
-        "X-RateLimit-Window": str(rate_info["window_seconds"])
+        "X-RateLimit-Window": str(rate_info["window_seconds"]),
     }

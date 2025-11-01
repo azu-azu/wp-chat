@@ -1,39 +1,47 @@
 # src/openai_client.py - OpenAI client wrapper with streaming support
-import os
-import json
-import time
 import asyncio
-from typing import List, Dict, Any, Optional, AsyncGenerator, Tuple
+import json
+import os
+import time
+from collections.abc import AsyncGenerator
 from dataclasses import dataclass
-from openai import AsyncOpenAI
+from typing import Any
+
 from dotenv import load_dotenv
+from openai import AsyncOpenAI
+
 from ..core.config import get_config_value, load_config
 
 # Load environment variables from .env file
 load_dotenv()
 
+
 @dataclass
 class TokenUsage:
     """Token usage statistics"""
+
     prompt_tokens: int
     completion_tokens: int
     total_tokens: int
 
+
 @dataclass
 class GenerationMetrics:
     """Generation performance metrics"""
+
     ttft_ms: int  # Time to first token
     total_latency_ms: int
     token_usage: TokenUsage
     model: str
     success: bool
-    error_message: Optional[str] = None
+    error_message: str | None = None
+
 
 class OpenAIClient:
     """OpenAI client with streaming support and error handling"""
 
     def __init__(self):
-        self.api_key = os.getenv('OPENAI_API_KEY')
+        self.api_key = os.getenv("OPENAI_API_KEY")
         if not self.api_key:
             raise ValueError("OPENAI_API_KEY environment variable is required")
 
@@ -48,23 +56,23 @@ class OpenAIClient:
         self.max_tokens = self.model_config["max_tokens"]
         self.timeout_sec = get_config_value("llm.timeout_sec", 30)
 
-    def get_model_info(self) -> Dict[str, Any]:
+    def get_model_info(self) -> dict[str, Any]:
         """Get current model information"""
         return {
             "alias": self.model_alias,
             "name": self.model_name,
             "temperature": self.temperature,
             "max_tokens": self.max_tokens,
-            "description": self.model_config.get("description", "")
+            "description": self.model_config.get("description", ""),
         }
 
     async def stream_chat(
         self,
-        messages: List[Dict[str, str]],
-        model: Optional[str] = None,
-        temperature: Optional[float] = None,
-        max_tokens: Optional[int] = None
-    ) -> AsyncGenerator[Dict[str, Any], None]:
+        messages: list[dict[str, str]],
+        model: str | None = None,
+        temperature: float | None = None,
+        max_tokens: int | None = None,
+    ) -> AsyncGenerator[dict[str, Any], None]:
         """Stream chat completion with error handling"""
         start_time = time.time()
         first_token_time = None
@@ -83,9 +91,9 @@ class OpenAIClient:
                     messages=messages,
                     temperature=temperature,
                     max_tokens=max_tokens,
-                    stream=True
+                    stream=True,
                 ),
-                timeout=self.timeout_sec
+                timeout=self.timeout_sec,
             )
 
             # Process streaming response
@@ -97,24 +105,17 @@ class OpenAIClient:
                     if first_token_time is None:
                         first_token_time = time.time()
                         ttft_ms = int((first_token_time - start_time) * 1000)
-                        yield {
-                            "type": "metrics",
-                            "ttft_ms": ttft_ms,
-                            "model": model
-                        }
+                        yield {"type": "metrics", "ttft_ms": ttft_ms, "model": model}
 
                     # Yield content
-                    yield {
-                        "type": "delta",
-                        "content": content
-                    }
+                    yield {"type": "delta", "content": content}
 
                 # Update token usage if available
                 if chunk.usage:
                     token_usage = TokenUsage(
                         prompt_tokens=chunk.usage.prompt_tokens,
                         completion_tokens=chunk.usage.completion_tokens,
-                        total_tokens=chunk.usage.total_tokens
+                        total_tokens=chunk.usage.total_tokens,
                     )
 
             # Final metrics
@@ -122,12 +123,14 @@ class OpenAIClient:
             yield {
                 "type": "done",
                 "metrics": {
-                    "ttft_ms": int((first_token_time - start_time) * 1000) if first_token_time else 0,
+                    "ttft_ms": int((first_token_time - start_time) * 1000)
+                    if first_token_time
+                    else 0,
                     "total_latency_ms": total_latency_ms,
                     "token_usage": token_usage.__dict__,
                     "model": model,
-                    "success": True
-                }
+                    "success": True,
+                },
             }
 
         except asyncio.TimeoutError:
@@ -140,8 +143,8 @@ class OpenAIClient:
                     "token_usage": token_usage.__dict__,
                     "model": model,
                     "success": False,
-                    "error_message": "Request timeout"
-                }
+                    "error_message": "Request timeout",
+                },
             }
 
         except Exception as e:
@@ -154,17 +157,17 @@ class OpenAIClient:
                     "token_usage": token_usage.__dict__,
                     "model": model,
                     "success": False,
-                    "error_message": str(e)
-                }
+                    "error_message": str(e),
+                },
             }
 
     async def chat_completion(
         self,
-        messages: List[Dict[str, str]],
-        model: Optional[str] = None,
-        temperature: Optional[float] = None,
-        max_tokens: Optional[int] = None
-    ) -> Tuple[str, GenerationMetrics]:
+        messages: list[dict[str, str]],
+        model: str | None = None,
+        temperature: float | None = None,
+        max_tokens: int | None = None,
+    ) -> tuple[str, GenerationMetrics]:
         """Non-streaming chat completion"""
         start_time = time.time()
         first_token_time = None
@@ -183,9 +186,9 @@ class OpenAIClient:
                     messages=messages,
                     temperature=temperature,
                     max_tokens=max_tokens,
-                    stream=False
+                    stream=False,
                 ),
-                timeout=self.timeout_sec
+                timeout=self.timeout_sec,
             )
 
             # Extract response
@@ -197,7 +200,7 @@ class OpenAIClient:
                 token_usage = TokenUsage(
                     prompt_tokens=response.usage.prompt_tokens,
                     completion_tokens=response.usage.completion_tokens,
-                    total_tokens=response.usage.total_tokens
+                    total_tokens=response.usage.total_tokens,
                 )
 
             # Build metrics
@@ -209,7 +212,7 @@ class OpenAIClient:
                 total_latency_ms=total_latency_ms,
                 token_usage=token_usage,
                 model=model,
-                success=True
+                success=True,
             )
 
             return content, metrics
@@ -221,7 +224,7 @@ class OpenAIClient:
                 token_usage=token_usage,
                 model=model,
                 success=False,
-                error_message="Request timeout"
+                error_message="Request timeout",
             )
             return "", metrics
 
@@ -232,7 +235,7 @@ class OpenAIClient:
                 token_usage=token_usage,
                 model=model,
                 success=False,
-                error_message=str(e)
+                error_message=str(e),
             )
             return "", metrics
 
@@ -240,7 +243,7 @@ class OpenAIClient:
         """Estimate cost based on token usage"""
         try:
             # Load pricing data
-            with open("pricing.json", "r") as f:
+            with open("pricing.json") as f:
                 pricing = json.load(f)
 
             model_pricing = pricing.get(self.model_name, {})
@@ -257,7 +260,7 @@ class OpenAIClient:
             print(f"Error estimating cost: {e}")
             return 0.0
 
-    async def health_check(self) -> Dict[str, Any]:
+    async def health_check(self) -> dict[str, Any]:
         """Check OpenAI API health"""
         try:
             start_time = time.time()
@@ -266,9 +269,9 @@ class OpenAIClient:
                 self.client.chat.completions.create(
                     model=self.model_name,
                     messages=[{"role": "user", "content": "Hello"}],
-                    max_tokens=5
+                    max_tokens=5,
                 ),
-                timeout=10
+                timeout=10,
             )
 
             latency_ms = int((time.time() - start_time) * 1000)
@@ -277,15 +280,12 @@ class OpenAIClient:
                 "status": "healthy",
                 "model": self.model_name,
                 "latency_ms": latency_ms,
-                "response_length": len(response.choices[0].message.content)
+                "response_length": len(response.choices[0].message.content),
             }
 
         except Exception as e:
-            return {
-                "status": "unhealthy",
-                "error": str(e),
-                "model": self.model_name
-            }
+            return {"status": "unhealthy", "error": str(e), "model": self.model_name}
+
 
 # Global client instance
 openai_client = OpenAIClient()
