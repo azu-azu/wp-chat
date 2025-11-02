@@ -271,7 +271,7 @@ OSError: [Errno 48] Address already in use
 pkill -f uvicorn
 
 # 新しいサーバーを起動
-uvicorn wp_chat.api.chat_api:app --reload --port 8080
+uvicorn wp_chat.api.main:app --reload --port 8080
 ```
 
 #### 5. 依存関係エラー
