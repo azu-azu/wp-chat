@@ -1,7 +1,7 @@
 # tests/unit/test_config.py
 import pytest
 
-from src.core.config import get_config_value, load_config
+from wp_chat.core.config import get_config_value, load_config
 
 
 @pytest.mark.unit

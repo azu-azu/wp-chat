@@ -52,7 +52,7 @@ class CrossEncoderReranker:
     def _sigmoid(x: np.ndarray) -> np.ndarray:
         return 1 / (1 + np.exp(-x))
 
-    @lru_cache(maxsize=4096)
+    @lru_cache(maxsize=4096)  # noqa: B019
     def _score_pair_cached(self, q: str, d: str) -> float:
         # NOTE: 1件だけの推論は低速なのでバッチを優先。これはフォールバック用途。
         return float(self._sigmoid(np.array(self.model.predict([(q, d)]))))  # 0-1
@@ -132,7 +132,7 @@ def rerank_with_ce(
             return sorted(diversified, key=lambda c: c.hybrid_score, reverse=True)[:topk]
 
         # Apply composite scoring
-        for c, s in zip(diversified, ce_scores):
+        for c, s in zip(diversified, ce_scores, strict=True):
             c.meta["ce_score"] = float(s)
             # Calculate composite score
             c.meta["composite_score"] = calculate_final_score(

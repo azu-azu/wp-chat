@@ -13,8 +13,8 @@ load_dotenv()
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from ..generation.generation import generation_pipeline
-from ..generation.openai_client import openai_client
+from ..generation.generation import generation_pipeline  # noqa: E402
+from ..generation.openai_client import openai_client  # noqa: E402
 
 
 async def test_generation(

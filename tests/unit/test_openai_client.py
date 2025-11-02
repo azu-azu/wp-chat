@@ -4,7 +4,7 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from src.generation.openai_client import GenerationMetrics, OpenAIClient
+from wp_chat.generation.openai_client import GenerationMetrics, OpenAIClient
 
 
 class TestOpenAIClient:
@@ -15,7 +15,7 @@ class TestOpenAIClient:
         """Create OpenAI client for testing"""
         # Mock environment and config
         with patch.dict(os.environ, {"OPENAI_API_KEY": "test-key"}):
-            with patch("src.generation.openai_client.load_config") as mock_config:
+            with patch("wp_chat.generation.openai_client.load_config") as mock_config:
                 mock_config.return_value = {
                     "models": {
                         "default-mini": {
@@ -27,7 +27,7 @@ class TestOpenAIClient:
                     },
                     "llm": {"alias": "default-mini", "timeout_sec": 30},
                 }
-                with patch("src.generation.openai_client.get_config_value") as mock_get:
+                with patch("wp_chat.generation.openai_client.get_config_value") as mock_get:
                     mock_get.side_effect = lambda key, default=None: {
                         "llm.alias": "default-mini",
                         "llm.timeout_sec": 30,
@@ -148,7 +148,7 @@ class TestOpenAIClientConfiguration:
     def test_model_selection(self):
         """Test model selection from config"""
         with patch.dict(os.environ, {"OPENAI_API_KEY": "test-key"}):
-            with patch("src.generation.openai_client.load_config") as mock_config:
+            with patch("wp_chat.generation.openai_client.load_config") as mock_config:
                 mock_config.return_value = {
                     "models": {
                         "default-mini": {
@@ -159,7 +159,7 @@ class TestOpenAIClientConfiguration:
                     },
                     "llm": {"alias": "default-mini", "timeout_sec": 30},
                 }
-                with patch("src.generation.openai_client.get_config_value") as mock_get:
+                with patch("wp_chat.generation.openai_client.get_config_value") as mock_get:
                     mock_get.side_effect = lambda key, default=None: {
                         "llm.alias": "default-mini",
                         "llm.timeout_sec": 30,
@@ -170,7 +170,7 @@ class TestOpenAIClientConfiguration:
     def test_timeout_configuration(self):
         """Test timeout configuration"""
         with patch.dict(os.environ, {"OPENAI_API_KEY": "test-key"}):
-            with patch("src.generation.openai_client.load_config") as mock_config:
+            with patch("wp_chat.generation.openai_client.load_config") as mock_config:
                 mock_config.return_value = {
                     "models": {
                         "default-mini": {
@@ -181,7 +181,7 @@ class TestOpenAIClientConfiguration:
                     },
                     "llm": {"alias": "default-mini", "timeout_sec": 30},
                 }
-                with patch("src.generation.openai_client.get_config_value") as mock_get:
+                with patch("wp_chat.generation.openai_client.get_config_value") as mock_get:
                     mock_get.side_effect = lambda key, default=None: {
                         "llm.alias": "default-mini",
                         "llm.timeout_sec": 30,
@@ -192,7 +192,7 @@ class TestOpenAIClientConfiguration:
     def test_temperature_configuration(self):
         """Test temperature configuration"""
         with patch.dict(os.environ, {"OPENAI_API_KEY": "test-key"}):
-            with patch("src.generation.openai_client.load_config") as mock_config:
+            with patch("wp_chat.generation.openai_client.load_config") as mock_config:
                 mock_config.return_value = {
                     "models": {
                         "default-mini": {
@@ -203,7 +203,7 @@ class TestOpenAIClientConfiguration:
                     },
                     "llm": {"alias": "default-mini", "timeout_sec": 30},
                 }
-                with patch("src.generation.openai_client.get_config_value") as mock_get:
+                with patch("wp_chat.generation.openai_client.get_config_value") as mock_get:
                     mock_get.side_effect = lambda key, default=None: {
                         "llm.alias": "default-mini",
                         "llm.timeout_sec": 30,

@@ -4,7 +4,7 @@ from unittest.mock import Mock
 
 import pytest
 
-from src.core.rate_limit import RateLimiter, check_rate_limit, get_rate_limit_headers
+from wp_chat.core.rate_limit import RateLimiter, check_rate_limit, get_rate_limit_headers
 
 
 class TestRateLimiter:

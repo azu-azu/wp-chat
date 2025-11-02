@@ -173,7 +173,7 @@ class BackupManager:
             if backup_type in ["full", "index"]:
                 index_path = self.config["paths"]["index"]
                 if os.path.exists(index_path):
-                    for root, dirs, files in os.walk(index_path):
+                    for root, _, files in os.walk(index_path):
                         for file in files:
                             file_path = os.path.join(root, file)
                             files_to_backup.append(file_path)
@@ -182,7 +182,7 @@ class BackupManager:
             if backup_type in ["full", "cache"]:
                 cache_path = self.config["paths"]["cache"]
                 if os.path.exists(cache_path):
-                    for root, dirs, files in os.walk(cache_path):
+                    for root, _, files in os.walk(cache_path):
                         for file in files:
                             file_path = os.path.join(root, file)
                             files_to_backup.append(file_path)
@@ -197,7 +197,7 @@ class BackupManager:
             if backup_type == "full":
                 logs_path = self.config["paths"]["logs"]
                 if os.path.exists(logs_path):
-                    for root, dirs, files in os.walk(logs_path):
+                    for root, _, files in os.walk(logs_path):
                         for file in files:
                             if not file.endswith(".jsonl"):  # Skip large log files
                                 continue

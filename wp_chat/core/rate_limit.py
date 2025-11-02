@@ -131,7 +131,7 @@ class RateLimiter:
         active_clients = 0
         total_requests = 0
 
-        for client_id, requests in self.rate_limits.items():
+        for _, requests in self.rate_limits.items():
             recent_requests = [r for r in requests if r > cutoff_time]
             if recent_requests:
                 active_clients += 1
