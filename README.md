@@ -2,6 +2,32 @@
 
 Advanced RAG (Retrieval-Augmented Generation) chatbot for WordPress sites with OpenAI integration, streaming responses, and citation tracking.
 
+## ⚡️ Quick Start (5 minutes)
+
+```bash
+# 1. Clone and setup
+git clone <repo-url> wp-chat
+cd wp-chat
+python -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+
+# 2. Configure
+cp .env.example .env
+# Edit .env: Add your WP_BASE_URL and OPENAI_API_KEY
+
+# 3. Build index
+python -m wp_chat.data.fetch_wp       # Fetch WordPress posts
+python -m wp_chat.data.clean_text     # Clean and chunk text
+python -m wp_chat.data.build_index    # Build FAISS index
+python -m wp_chat.data.build_bm25     # Build BM25 index
+
+# 4. Start server
+uvicorn wp_chat.api.main:app --reload --port 8080
+
+# 5. Test
+python -m wp_chat.cli.generate_cli --interactive
+```
+
 ## 🚀 Features
 
 - **RAG Generation**: OpenAI GPT-4o mini integration with citation tracking
@@ -17,8 +43,19 @@ Advanced RAG (Retrieval-Augmented Generation) chatbot for WordPress sites with O
 ```
 wp_chat/                    # Main application package
 ├── api/                    # FastAPI endpoints
-│   ├── chat_api.py        # Main API server
-│   └── models.py          # Request/response models
+│   ├── main.py            # Main FastAPI app (entry point)
+│   ├── models.py          # Pydantic request/response models
+│   └── routers/           # Modular endpoint routers
+│       ├── chat.py        # /search, /ask, /generate
+│       ├── stats.py       # /stats/* (monitoring)
+│       ├── admin_canary.py    # /admin/canary/*
+│       ├── admin_incidents.py # /admin/incidents/*
+│       ├── admin_backup.py    # /admin/backup/*
+│       └── admin_cache.py     # /admin/cache/*
+├── services/               # Business logic layer (Phase 2)
+│   ├── search_service.py  # Search operations
+│   ├── generation_service.py  # RAG generation
+│   └── cache_service.py   # Cache management
 ├── cli/                    # Command-line tools
 │   ├── generate_cli.py    # RAG generation testing
 │   ├── backup_cli.py      # Backup management
@@ -57,6 +94,31 @@ wp_chat/                    # Main application package
     └── eval_retrieval.py  # Retrieval evaluation
 ```
 
+## 📂 Project Structure
+
+```
+wp-chat/
+├── wp_chat/            # Main application package (see above)
+├── guide/              # 📚 User guides and documentation
+├── plans/              # 📋 Implementation planning documents
+├── tests/              # 🧪 Test suite
+├── backups/            # 💾 Automatic backups
+├── cache/              # 🚀 API response cache
+├── logs/               # 📊 Application logs
+├── data/               # 📁 Indexes and data files
+│   ├── raw/           # Raw WordPress data
+│   ├── processed/     # Cleaned and chunked data
+│   └── index/         # Search indexes
+│       ├── wp.faiss          # FAISS vector index
+│       ├── wp.meta.json      # Document metadata
+│       ├── wp.tfidf.pkl      # BM25 vectorizer
+│       └── wp.tfidf.npz      # BM25 matrix
+├── config.yml          # ⚙️ Application configuration
+├── .env                # 🔐 Environment variables (create from .env.example)
+├── requirements.txt    # 📦 Python dependencies
+└── README.md           # 📖 This file
+```
+
 ## 📋 Prerequisites
 
 - Python 3.10+
@@ -84,20 +146,39 @@ cp .env.example .env
 Required environment variables:
 ```bash
 # .env
+
+# Required
 WP_BASE_URL=https://your-blog.example.com
 OPENAI_API_KEY=sk-proj-your-openai-api-key-here
+
+# Optional (for production)
+API_KEY=your-admin-api-key-here              # For /admin/* endpoints
+ALLOWED_ORIGINS=http://localhost:3000        # CORS origins (comma-separated)
+PORT=8080                                     # API server port
+LOG_LEVEL=INFO                                # DEBUG, INFO, WARNING, ERROR
 ```
 
 ### 3. Data Pipeline
 ```bash
-# Fetch WordPress content
+# Step 1: Fetch WordPress content
 python -m wp_chat.data.fetch_wp
+# Creates: data/raw/wp_posts.jsonl
 
-# Clean and process text
+# Step 2: Clean and chunk text
 python -m wp_chat.data.clean_text
+# Creates: data/processed/wp_cleaned.jsonl, wp_chunks.jsonl
 
-# Build search index
+# Step 3: Build FAISS index (dense/semantic search)
 python -m wp_chat.data.build_index
+# Creates: data/index/wp.faiss, wp.meta.json
+
+# Step 4: Build BM25 index (keyword search)
+python -m wp_chat.data.build_bm25
+# Creates: data/index/wp.tfidf.pkl, wp.tfidf.npz
+
+# Verify all indexes are created
+ls -lh data/index/
+# Expected: wp.faiss, wp.meta.json, wp.tfidf.pkl, wp.tfidf.npz
 ```
 
 ## 🚀 Running the Application
@@ -105,10 +186,10 @@ python -m wp_chat.data.build_index
 ### API Server
 ```bash
 # Development mode
-uvicorn wp_chat.api.chat_api:app --reload --port 8080
+uvicorn wp_chat.api.main:app --reload --port 8080
 
 # Production mode
-uvicorn wp_chat.api.chat_api:app --host 0.0.0.0 --port 8080
+uvicorn wp_chat.api.main:app --host 0.0.0.0 --port 8080
 ```
 
 ### CLI Tools
@@ -139,6 +220,26 @@ python -m wp_chat.cli.canary_cli --help
 # Incident management
 python -m wp_chat.cli.incident_cli --help
 ```
+
+## 🎯 API Quick Reference
+
+| Endpoint | Method | Purpose | Auth Required |
+|----------|--------|---------|---------------|
+| `/search` | POST | Hybrid search with rerank | Optional |
+| `/ask` | POST | Search with highlighted snippets | Optional |
+| `/generate` | POST | RAG generation (streaming) | Optional |
+| `/stats/health` | GET | Health check | None |
+| `/stats/slo` | GET | SLO metrics | None |
+| `/stats/ab` | GET | A/B testing statistics | None |
+| `/stats/cache` | GET | Cache statistics | None |
+| `/dashboard` | GET | Monitoring dashboard UI | None |
+| `/admin/canary/status` | GET | Canary deployment status | API Key |
+| `/admin/canary/rollout` | POST | Update rollout percentage | API Key |
+| `/admin/backup/list` | GET | List backups | API Key |
+| `/admin/backup/create` | POST | Create backup | API Key |
+| `/admin/incidents/status` | GET | Incident status | API Key |
+
+**Note:** Admin endpoints (`/admin/*`) require API key authentication via `X-API-Key` header.
 
 ## 🔧 API Endpoints
 
@@ -327,7 +428,7 @@ python -m wp_chat.cli.backup_cli restore <backup_id>
    # Kill existing processes
    pkill -f uvicorn
    # Start fresh
-   uvicorn wp_chat.api.chat_api:app --reload --port 8080
+   uvicorn wp_chat.api.main:app --reload --port 8080
    ```
 
 ### Logs
@@ -379,7 +480,27 @@ MIT License - see LICENSE file for details.
 
 ## 📋 Planning Documents
 
-- **[🔧 改善実装計画 (2025-11-01)](plans/2025-11-01-improvement-plan.md)** - 安定運用に向けたTOP8改善項目
+### 🚧 Active Plans
+- **[📦 API Refactoring Plan (2025-11-02)](plans/2025-11-02-api-refactoring-plan.md)** - Modular architecture with service layer
+  - **Status:** ✅ Phase 1-2 Completed (Router + Service layer)
+  - **Achievements:**
+    - main.py (旧chat_api.py): 1,109行 → 87行 (92%削減)
+    - chat.py router: 631行 → 512行 (19%削減)
+    - Service層: SearchService, GenerationService, CacheService 作成
+  - **Next:** Phase 3 - Domain layer (optional)
+
+### ✅ Completed Plans
+- **[🔧 Improvement Plan (2025-11-01)](plans/completed/04_2025-11-01-improvement-plan.md)** - TOP8 stability improvements
+  - ✅ Test infrastructure setup
+  - ✅ Structured logging
+  - ✅ Exception class hierarchy
+  - ✅ CI/CD pipeline (basic)
+  - ✅ Type checking with mypy
+- **[🎯 RAG Implementation (2025-10-24)](plans/completed/03_2025-10-24_rag.md)** - MVP4 RAG generation
+- **[📊 MVP Consolidation (2025-10-18)](plans/completed/02_2025-10-18_mvp_matome.md)** - Feature consolidation
+- **[🚀 MVP1 (2025-10-16)](plans/completed/01_2025-10-16_mvp1.md)** - Initial implementation
+
+See [plans/README.md](plans/README.md) for planning workflow and archive.
 
 ## 📞 Support
 

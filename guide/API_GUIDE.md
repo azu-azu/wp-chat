@@ -15,17 +15,17 @@ WordPress RAG ChatbotのAPIエンドポイントの詳細な使用方法を説�
 
 ### 開発モード
 ```bash
-uvicorn wp_chat.api.chat_api:app --reload --port 8080
+uvicorn wp_chat.api.main:app --reload --port 8080
 ```
 
 ### 本番モード
 ```bash
-uvicorn wp_chat.api.chat_api:app --host 0.0.0.0 --port 8080
+uvicorn wp_chat.api.main:app --host 0.0.0.0 --port 8080
 ```
 
 ### カスタム設定
 ```bash
-uvicorn wp_chat.api.chat_api:app --reload --port 8080 --workers 4
+uvicorn wp_chat.api.main:app --reload --port 8080 --workers 4
 ```
 
 ## 🔍 検索・質問エンドポイント

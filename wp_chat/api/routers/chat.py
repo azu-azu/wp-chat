@@ -2,7 +2,6 @@
 import json
 import time
 
-import numpy as np
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 
@@ -11,9 +10,6 @@ from ...api.models import AskRequest, GenerateRequest, SearchRequest
 
 # Import authentication
 from ...core.auth import get_api_key
-
-# Import cache functionality
-from ...core.cache import cache_manager, cache_search_results, get_cached_search_results
 
 # Import configuration
 from ...core.config import get_config_value
@@ -34,18 +30,13 @@ from ...management.ab_logging import ab_logger
 
 # Import canary management
 from ...management.canary_manager import get_canary_status, is_rerank_enabled_for_user
+from ...services.cache_service import CacheService
+from ...services.generation_service import GenerationService
 
-# Import retrieval functions
-from ...retrieval.rerank import (
-    Candidate,
-    CrossEncoderReranker,
-    dedup_by_article,
-    mmr_diversify,
-    rerank_with_ce,
-)
+# Import services (Phase 2)
+from ...services.search_service import SearchService
 
-# Import global resources from parent module
-# These will be initialized by chat_api.py
+# Global resources (will be initialized by chat_api.py)
 model = None
 index = None
 meta = None
@@ -54,12 +45,20 @@ tfidf_mat = None
 TOPK_DEFAULT = None
 TOPK_MAX = None
 
+# Service instances (Phase 2)
+search_service = None
+generation_service = None
+cache_service = None
+
 
 def init_globals(
     model_obj, index_obj, meta_obj, tfidf_vec_obj, tfidf_mat_obj, topk_default, topk_max
 ):
-    """Initialize global resources from chat_api.py"""
+    """Initialize global resources and services from chat_api.py"""
     global model, index, meta, tfidf_vec, tfidf_mat, TOPK_DEFAULT, TOPK_MAX
+    global search_service, generation_service, cache_service
+
+    # Initialize resources
     model = model_obj
     index = index_obj
     meta = meta_obj
@@ -68,92 +67,13 @@ def init_globals(
     TOPK_DEFAULT = topk_default
     TOPK_MAX = topk_max
 
+    # Initialize services (Phase 2)
+    search_service = SearchService(model, index, meta, tfidf_vec, tfidf_mat)
+    generation_service = GenerationService(meta)
+    cache_service = CacheService()
+
 
 router = APIRouter()
-
-
-# Helper functions
-def _minmax(x):
-    mn, mx = float(x.min()), float(x.max())
-    return (x - mn) / (mx - mn + 1e-9)
-
-
-def _search_dense(q: str, topk: int):
-    qv = model.encode(q, normalize_embeddings=True).astype("float32")
-    D, I = index.search(np.expand_dims(qv, 0), topk)  # noqa: N806, E741
-    return list(zip(I[0].tolist(), D[0].tolist(), strict=True))
-
-
-def _search_bm25(q: str, topk: int):
-    if tfidf_vec is None or tfidf_mat is None:
-        raise HTTPException(400, "BM25 index not built. Run build_bm25.py.")
-    qv = tfidf_vec.transform([q])
-    scores = (tfidf_mat @ qv.T).toarray().ravel()
-    ids = np.argsort(-scores)[:topk]
-    return [(int(i), float(scores[i])) for i in ids]
-
-
-def _search_hybrid_with_rerank(q: str, topk: int, wd=0.6, wb=0.4, rerank=False, mmr_lambda=0.7):
-    """Enhanced hybrid search with optional reranking"""
-    d = _search_dense(q, 200)
-    b = _search_bm25(q, 200)
-    ids = sorted(set([i for i, _ in d] + [i for i, _ in b]))
-    d_map = {i: s for i, s in d}
-    b_map = {i: s for i, s in b}
-    d_arr = np.array([d_map.get(i, 0.0) for i in ids], dtype="float32")
-    b_arr = np.array([b_map.get(i, 0.0) for i in ids], dtype="float32")
-    combo = wd * _minmax(d_arr) + wb * _minmax(b_arr)
-
-    # Create Candidate objects
-    candidates = []
-    for i, score in enumerate(combo):
-        if i < len(meta):
-            m = meta[i]
-            doc_emb = model.encode(m["chunk"], normalize_embeddings=True).astype("float32")
-            candidates.append(
-                Candidate(
-                    doc_id=m["url"],
-                    chunk_id=m["chunk_id"],
-                    text=m["chunk"],
-                    hybrid_score=float(score),
-                    emb=doc_emb,
-                    meta={"post_id": m["post_id"], "title": m["title"], "url": m["url"]},
-                )
-            )
-
-    # Article deduplication
-    candidates = dedup_by_article(candidates, limit_per_article=5)
-
-    # MMR diversification
-    q_emb = model.encode(q, normalize_embeddings=True).astype("float32")
-    diversified = mmr_diversify(q_emb, candidates, lambda_=mmr_lambda, topn=30)
-
-    # Reranking
-    if rerank:
-        try:
-            ce = CrossEncoderReranker("cross-encoder/ms-marco-MiniLM-L-6-v2", batch_size=16)
-            ranked = rerank_with_ce(q, diversified, ce, topk=topk, timeout_sec=5.0)
-            rerank_status = True
-        except Exception as e:
-            # Fallback to hybrid scores
-            ranked = sorted(diversified, key=lambda c: c.hybrid_score, reverse=True)[:topk]
-            rerank_status = False
-            print(f"Reranking failed: {e}")
-    else:
-        ranked = sorted(diversified, key=lambda c: c.hybrid_score, reverse=True)[:topk]
-        rerank_status = False
-
-    # Convert back to (idx, score, ce_score) format
-    results = []
-    for cand in ranked:
-        # Find original index in meta
-        for i, m in enumerate(meta):
-            if m["url"] == cand.doc_id and m["chunk_id"] == cand.chunk_id:
-                ce_score = cand.meta.get("ce_score", None)
-                results.append((i, cand.hybrid_score, ce_score))
-                break
-
-    return results, rerank_status
 
 
 # Endpoints
@@ -189,34 +109,31 @@ def search(
                 headers = get_rate_limit_headers(rate_info)
                 raise HTTPException(429, "Rate limit exceeded", headers=headers)
 
-        # Check cache first
-        if get_config_value("api.cache.enabled", True):
-            cached_results = get_cached_search_results(q)
-            if cached_results is not None:
-                cache_hit = True
-                return JSONResponse(
-                    {
-                        "query": q,
-                        "mode": mode,
-                        "rerank": False,
-                        "highlight": highlight,
-                        "cached": True,
-                        "contexts": cached_results,
-                    }
-                )
+        # Check cache first (using CacheService)
+        cached_results = cache_service.get_search_results(q)
+        if cached_results is not None:
+            cache_hit = True
+            return JSONResponse(
+                {
+                    "query": q,
+                    "mode": mode,
+                    "rerank": False,
+                    "highlight": highlight,
+                    "cached": True,
+                    "contexts": cached_results,
+                }
+            )
 
-        if mode == "dense":
-            hits = _search_dense(q, topk)
-            rerank_status = False
-        elif mode == "bm25":
-            hits = _search_bm25(q, topk)
-            rerank_status = False
-        else:
-            # Check canary deployment for rerank decision
-            canary_rerank_enabled = is_rerank_enabled_for_user(user_id)
-            # Use canary decision if rerank is not explicitly disabled
-            final_rerank = rerank and canary_rerank_enabled
-            hits, rerank_status = _search_hybrid_with_rerank(q, topk, rerank=final_rerank)
+        # Perform search (using SearchService)
+        # Check canary deployment for rerank decision
+        canary_rerank_enabled = is_rerank_enabled_for_user(user_id)
+        final_rerank = rerank and canary_rerank_enabled
+
+        search_result = search_service.execute_search(
+            query=q, topk=topk, mode=mode, rerank=final_rerank
+        )
+        hits = search_result.results
+        rerank_status = search_result.rerank_enabled
 
         out = []
         for rank, hit in enumerate(hits, 1):
@@ -264,10 +181,8 @@ def search(
         except Exception:
             pass  # Don't fail the request if logging fails
 
-        # Cache results if caching is enabled
-        if get_config_value("api.cache.enabled", True):
-            search_ttl = get_config_value("api.cache.search_ttl", 1800)
-            cache_search_results(q, out, search_ttl)
+        # Cache results (using CacheService)
+        cache_service.cache_search_results(q, out)
 
         return JSONResponse(
             {
@@ -314,15 +229,17 @@ def ask(req: AskRequest, api_key: str = Depends(get_api_key)):
     q = req.question.strip()
     if not q:
         raise HTTPException(400, "question is empty")
+
     mode = req.mode
-    if mode == "dense":
-        pairs = _search_dense(q, req.topk)
-        rerank_status = False
-    elif mode == "bm25":
-        pairs = _search_bm25(q, req.topk)
-        rerank_status = False
-    else:
-        pairs, rerank_status = _search_hybrid_with_rerank(q, req.topk, rerank=req.rerank)
+
+    # Perform search (using SearchService)
+    search_result = search_service.execute_search(
+        query=q, topk=req.topk, mode=mode, rerank=req.rerank
+    )
+    pairs = search_result.results
+    rerank_status = search_result.rerank_enabled
+
+    # Convert results to output format
     hits = []
     for rank, hit in enumerate(pairs, 1):
         if len(hit) == 3:  # (idx, hybrid_score, ce_score)
@@ -398,61 +315,28 @@ async def generate(
                 headers = get_rate_limit_headers(rate_info)
                 raise HTTPException(429, "Rate limit exceeded", headers=headers)
 
-        # Check cache first
-        cache_key = f"generate:{req.question}:{req.topk}:{req.mode}:{req.rerank}"
-        if get_config_value("api.cache.enabled", True):
-            cached_result = cache_manager.get(cache_key)
-            if cached_result is not None:
-                cache_hit = True
-                if req.stream:
-                    # For streaming, return cached result as non-streaming
-                    return JSONResponse(cached_result)
-                else:
-                    return JSONResponse(cached_result)
+        # Check cache first (using CacheService)
+        cache_key = cache_service.build_generation_cache_key(
+            req.question, req.topk, req.mode, req.rerank
+        )
+        cached_result = cache_service.get_generation_result(cache_key)
+        if cached_result is not None:
+            cache_hit = True
+            # For streaming, return cached result as non-streaming
+            return JSONResponse(cached_result)
 
-        # Perform retrieval using existing hybrid search
-        if req.mode == "dense":
-            hits = _search_dense(req.question, req.topk)
-            rerank_status = False
-        elif req.mode == "bm25":
-            hits = _search_bm25(req.question, req.topk)
-            rerank_status = False
-        else:
-            # Check canary deployment for rerank decision
-            canary_rerank_enabled = is_rerank_enabled_for_user(req.user_id)
-            final_rerank = req.rerank and canary_rerank_enabled
-            hits, rerank_status = _search_hybrid_with_rerank(
-                req.question, req.topk, rerank=final_rerank
-            )
+        # Perform retrieval (using SearchService)
+        canary_rerank_enabled = is_rerank_enabled_for_user(req.user_id)
+        final_rerank = req.rerank and canary_rerank_enabled
 
-        # Convert hits to document format
-        docs = []
-        for rank, hit in enumerate(hits, 1):
-            if len(hit) == 3:  # (idx, hybrid_score, ce_score)
-                idx, hybrid_sc, ce_sc = hit
-            else:  # (idx, score) - backward compatibility
-                idx, hybrid_sc = hit
-                ce_sc = None
+        search_result = search_service.execute_search(
+            query=req.question, topk=req.topk, mode=req.mode, rerank=final_rerank
+        )
+        hits = search_result.results
+        rerank_status = search_result.rerank_enabled
 
-            if idx < 0 or idx >= len(meta):
-                continue
-
-            m = meta[idx]
-            doc = {
-                "rank": rank,
-                "hybrid_score": hybrid_sc,
-                "post_id": m["post_id"],
-                "chunk_id": m["chunk_id"],
-                "title": m["title"],
-                "url": m["url"],
-                "snippet": m["chunk"][:400] + ("…" if len(m["chunk"]) > 400 else ""),
-                "chunk": m["chunk"],
-            }
-
-            if ce_sc is not None:
-                doc["ce_score"] = ce_sc
-
-            docs.append(doc)
+        # Convert hits to document format (using GenerationService)
+        docs, _ = generation_service.convert_hits_to_documents(hits, req.question)
 
         # Process context and build prompt
         processed_docs, context_metadata = generation_pipeline.process_retrieval_results(docs)
@@ -575,10 +459,8 @@ async def generate(
                         },
                     }
 
-                # Cache the result
-                if get_config_value("api.cache.enabled", True):
-                    cache_ttl = get_config_value("api.cache.search_ttl", 1800)
-                    cache_manager.set(cache_key, response_data, cache_ttl)
+                # Cache the result (using CacheService)
+                cache_service.cache_generation_result(cache_key, response_data)
 
                 return JSONResponse(response_data)
 
