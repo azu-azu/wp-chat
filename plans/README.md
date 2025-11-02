@@ -30,24 +30,25 @@ yyyy-mm-dd-<plan-name>.md
 
 ## 計画一覧
 
-### 2025-11-01: 改善実装計画
-**[2025-11-01-improvement-plan.md](2025-11-01-improvement-plan.md)**
+### 2025-11-02: API Refactoring Plan
+**[2025-11-02-api-refactoring-plan.md](2025-11-02-api-refactoring-plan.md)**
 
-プロジェクトを「研究試作→安定運用」へ移行するためのTOP8改善項目。
+chat_api.py (1109行) をRouter分割し、Clean Architectureに近づける3段階リファクタリング計画。
 
-**ステータス:** 📝 計画中
+**ステータス:** 📝 提案中
 
-**内容:**
-- テスト体系の整備
-- CI/CDパイプライン
-- 環境変数の完全化
-- 型チェック導入
-- 構造化ログ
-- 例外クラス階層化
-- 入力バリデーション
-- API Key認証
+**フェーズ:**
+- Phase 1: Router分割 (即効性★★★) - 4-8時間
+- Phase 2: Service層抽出 (設計改善★★★) - 8-16時間
+- Phase 3: Domain層整備 (Clean Architecture★★★★★) - 16-24時間
 
-**実装期間:** 4-5日
+**期待効果:**
+- 1ファイル最大行数: 1109 → ~250行 (Phase 1)
+- 可読性: +50%, 保守性: +70%
+- テスト容易性: 低 → 高
+- 新規参画障壁: -60%
+
+**優先度:** High (Phase 1即時着手推奨)
 
 ---
 
