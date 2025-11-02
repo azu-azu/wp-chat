@@ -59,7 +59,7 @@ python3 src/generate_cli.py --interactive
 
 ### 4. Start the API Server
 ```bash
-uvicorn src.chat_api:app --reload --port 8080
+uvicorn wp_chat.chat_api:app --reload --port 8080
 ```
 
 ### 5. Test API Endpoints

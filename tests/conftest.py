@@ -79,8 +79,7 @@ def mock_openai_streaming_client():
             Mock(choices=[Mock(delta=Mock(content="回答です。"))]),
             Mock(choices=[Mock(delta=Mock(content="[[1]]"))]),
         ]
-        for chunk in chunks:
-            yield chunk
+        yield from chunks
 
     mock_client.chat.completions.create.return_value = mock_stream()
 
@@ -176,7 +175,7 @@ def mock_faiss_index():
 @pytest.fixture
 def test_client() -> Generator[TestClient, None, None]:
     """FastAPI TestClient"""
-    from src.api.chat_api import app
+    from wp_chat.api.chat_api import app
 
     # テスト用環境変数設定
     os.environ["OPENAI_API_KEY"] = "sk-test-key"

@@ -15,9 +15,10 @@ Advanced RAG (Retrieval-Augmented Generation) chatbot for WordPress sites with O
 ## 🏗️ Architecture
 
 ```
-src/
+wp_chat/                    # Main application package
 ├── api/                    # FastAPI endpoints
-│   └── chat_api.py        # Main API server
+│   ├── chat_api.py        # Main API server
+│   └── models.py          # Request/response models
 ├── cli/                    # Command-line tools
 │   ├── generate_cli.py    # RAG generation testing
 │   ├── backup_cli.py      # Backup management
@@ -28,11 +29,15 @@ src/
 │   ├── cache.py           # Response caching
 │   ├── rate_limit.py      # Rate limiting
 │   ├── slo_monitoring.py  # Performance monitoring
-│   └── runbook.py         # Emergency procedures
+│   ├── runbook.py         # Emergency procedures
+│   ├── auth.py            # Authentication
+│   ├── exceptions.py      # Custom exceptions
+│   └── logging_config.py  # Logging setup
 ├── data/                   # Data processing
 │   ├── fetch_wp.py        # WordPress API fetch
 │   ├── clean_text.py      # Text cleaning
-│   ├── build_index.py     # Index building
+│   ├── build_index.py     # FAISS index building
+│   ├── build_bm25.py      # BM25 index building
 │   └── utils_chunk.py     # Text chunking
 ├── generation/             # RAG generation (MVP4)
 │   ├── generation.py      # Generation pipeline
@@ -86,13 +91,13 @@ OPENAI_API_KEY=sk-proj-your-openai-api-key-here
 ### 3. Data Pipeline
 ```bash
 # Fetch WordPress content
-python -m src.data.fetch_wp
+python -m wp_chat.data.fetch_wp
 
 # Clean and process text
-python -m src.data.clean_text
+python -m wp_chat.data.clean_text
 
 # Build search index
-python -m src.data.build_index
+python -m wp_chat.data.build_index
 ```
 
 ## 🚀 Running the Application
@@ -100,10 +105,10 @@ python -m src.data.build_index
 ### API Server
 ```bash
 # Development mode
-uvicorn src.api.chat_api:app --reload --port 8080
+uvicorn wp_chat.api.chat_api:app --reload --port 8080
 
 # Production mode
-uvicorn src.api.chat_api:app --host 0.0.0.0 --port 8080
+uvicorn wp_chat.api.chat_api:app --host 0.0.0.0 --port 8080
 ```
 
 ### CLI Tools
@@ -111,28 +116,28 @@ uvicorn src.api.chat_api:app --host 0.0.0.0 --port 8080
 #### RAG Generation Testing
 ```bash
 # Health check
-python -m src.cli.generate_cli --health
+python -m wp_chat.cli.generate_cli --health
 
 # Single question
-python -m src.cli.generate_cli "Pythonプログラミングの基本を教えて"
+python -m wp_chat.cli.generate_cli "Pythonプログラミングの基本を教えて"
 
 # Interactive mode (recommended)
-python -m src.cli.generate_cli --interactive
+python -m wp_chat.cli.generate_cli --interactive
 
 # With options
-python -m src.cli.generate_cli "Webアプリケーションの作り方を教えて" --topk 5 --mode hybrid --rerank
+python -m wp_chat.cli.generate_cli "Webアプリケーションの作り方を教えて" --topk 5 --mode hybrid --rerank
 ```
 
 #### Other CLI Tools
 ```bash
 # Backup management
-python -m src.cli.backup_cli --help
+python -m wp_chat.cli.backup_cli --help
 
 # Canary deployment
-python -m src.cli.canary_cli --help
+python -m wp_chat.cli.canary_cli --help
 
 # Incident management
-python -m src.cli.incident_cli --help
+python -m wp_chat.cli.incident_cli --help
 ```
 
 ## 🔧 API Endpoints
@@ -223,7 +228,7 @@ python3 test_mvp4.py
 ### Interactive Testing
 ```bash
 # Start interactive mode
-python -m src.cli.generate_cli --interactive
+python -m wp_chat.cli.generate_cli --interactive
 
 # Example session:
 # Q: Pythonプログラミングの基本を教えて
@@ -285,13 +290,13 @@ curl http://localhost:8080/admin/canary/status
 ### Backup & Recovery
 ```bash
 # Create backup
-python -m src.cli.backup_cli create
+python -m wp_chat.cli.backup_cli create
 
 # List backups
-python -m src.cli.backup_cli list
+python -m wp_chat.cli.backup_cli list
 
 # Restore backup
-python -m src.cli.backup_cli restore <backup_id>
+python -m wp_chat.cli.backup_cli restore <backup_id>
 ```
 
 ## 🚨 Troubleshooting
@@ -308,13 +313,13 @@ python -m src.cli.backup_cli restore <backup_id>
 2. **OpenAI API Errors**
    ```bash
    # Check API key
-   python -m src.cli.generate_cli --health
+   python -m wp_chat.cli.generate_cli --health
    ```
 
 3. **Index Not Found**
    ```bash
    # Rebuild index
-   python -m src.data.build_index
+   python -m wp_chat.data.build_index
    ```
 
 4. **Port Conflicts**
@@ -322,7 +327,7 @@ python -m src.cli.backup_cli restore <backup_id>
    # Kill existing processes
    pkill -f uvicorn
    # Start fresh
-   uvicorn src.api.chat_api:app --reload --port 8080
+   uvicorn wp_chat.api.chat_api:app --reload --port 8080
    ```
 
 ### Logs
@@ -363,12 +368,12 @@ MIT License - see LICENSE file for details.
 
 ## 📚 Documentation
 
-- **[📖 ドキュメントガイド](guide/README.md)** - ドキュメントの概要と読み方
-- **[🖥️ CLI実行ガイド](guide/CLI_GUIDE.md)** - CLIツールの詳細な使用方法
-- **[🌐 APIエンドポイントガイド](guide/API_GUIDE.md)** - APIの詳細な仕様と使用例
-- **[💾 バックアップ・復元ガイド](guide/BACKUP_GUIDE.md)** - バックアップシステムの使用方法
-- **[🚨 インシデント対応ガイド](guide/INCIDENT_RUNBOOK.md)** - 緊急対応手順
-- **[🎯 MVP4実装サマリー](guide/MVP4_SUMMARY.md)** - RAG生成機能の実装内容
+- **[📖 ドキュメントガイド](guide/readme.md)** - ドキュメントの概要と読み方
+- **[🖥️ CLI実行ガイド](guide/cli_guide.md)** - CLIツールの詳細な使用方法
+- **[🌐 APIエンドポイントガイド](guide/api_guide.md)** - APIの詳細な仕様と使用例
+- **[💾 バックアップ・復元ガイド](guide/backup_guide.md)** - バックアップシステムの使用方法
+- **[🚨 インシデント対応ガイド](guide/incident_runbook.md)** - 緊急対応手順
+- **[🎯 MVP4実装サマリー](guide/mvp4_summary.md)** - RAG生成機能の実装内容
 - **[⚙️ 設定ファイル](config.yml)** - アプリケーション設定
 - **[💰 価格設定](pricing.json)** - LLMモデルの価格情報
 

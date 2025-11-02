@@ -33,7 +33,7 @@ def hybrid_search(q: str, k_bm25: int = 100, k_dense: int = 100, alpha: float = 
 
     # Dense search
     qv = model.encode(q, normalize_embeddings=True).astype("float32")
-    D, I = index.search(np.expand_dims(qv, 0), k_dense)
+    D, I = index.search(np.expand_dims(qv, 0), k_dense)  # noqa: N806, E741
     d_ids, d_scores = I[0], D[0]
 
     # BM25 search
@@ -43,7 +43,7 @@ def hybrid_search(q: str, k_bm25: int = 100, k_dense: int = 100, alpha: float = 
 
     # Combine results
     ids = sorted(set(d_ids.tolist()) | set(s_top.tolist()))
-    d_map = {int(i): float(s) for i, s in zip(d_ids, d_scores)}
+    d_map = {int(i): float(s) for i, s in zip(d_ids, d_scores, strict=True)}
     s_map = {int(i): float(s_scores[i]) for i in s_top}
     d_arr = np.array([d_map.get(i, 0.0) for i in ids], dtype="float32")
     s_arr = np.array([s_map.get(i, 0.0) for i in ids], dtype="float32")

@@ -4,7 +4,7 @@ import time
 import pytest
 from fastapi.testclient import TestClient
 
-from src.core.cache import cache_manager, cache_search_results, get_cached_search_results
+from wp_chat.core.cache import cache_manager, cache_search_results, get_cached_search_results
 
 
 class TestCacheIntegration:
@@ -93,7 +93,7 @@ class TestAPIWithCache:
     def client(self):
         """Create test client"""
         # Import here to avoid circular dependency
-        from src.api.chat_api import app
+        from wp_chat.api.chat_api import app
 
         return TestClient(app)
 

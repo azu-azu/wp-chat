@@ -117,8 +117,8 @@ def _minmax(x):
 
 def _search_dense(q: str, topk: int):
     qv = model.encode(q, normalize_embeddings=True).astype("float32")
-    D, I = index.search(np.expand_dims(qv, 0), topk)
-    return list(zip(I[0].tolist(), D[0].tolist()))
+    D, I = index.search(np.expand_dims(qv, 0), topk)  # noqa: N806, E741
+    return list(zip(I[0].tolist(), D[0].tolist(), strict=True))
 
 
 def _search_bm25(q: str, topk: int):
@@ -330,7 +330,7 @@ def search(
         status_code = 500
         error_message = str(e)
         fallback_used = True
-        raise HTTPException(500, f"Internal server error: {str(e)}")
+        raise HTTPException(500, f"Internal server error: {str(e)}") from e
     finally:
         # Record SLO metrics
         latency_ms = int((time.time() - start_time) * 1000)
@@ -1086,7 +1086,7 @@ async def generate(
         status_code = 500
         error_message = str(e)
         fallback_used = True
-        raise HTTPException(500, f"Internal server error: {str(e)}")
+        raise HTTPException(500, f"Internal server error: {str(e)}") from e
     finally:
         # Record SLO metrics
         latency_ms = int((time.time() - start_time) * 1000)

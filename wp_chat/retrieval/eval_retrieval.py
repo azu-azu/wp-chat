@@ -49,8 +49,8 @@ def load_sparse():
 def retrieve_dense(q: str, topk: int) -> list[tuple[int, float]]:
     model, index, _ = load_dense()
     qv = model.encode(q, normalize_embeddings=True).astype("float32")
-    D, I = index.search(np.expand_dims(qv, 0), topk)
-    return list(zip(I[0].tolist(), D[0].tolist()))
+    D, I = index.search(np.expand_dims(qv, 0), topk)  # noqa: N806, E741
+    return list(zip(I[0].tolist(), D[0].tolist(), strict=True))
 
 
 def retrieve_bm25(q: str, topk: int) -> list[tuple[int, float]]:
@@ -78,7 +78,7 @@ def retrieve_hybrid(
 
     # Dense search
     qv = model.encode(q, normalize_embeddings=True).astype("float32")
-    D, I = index.search(np.expand_dims(qv, 0), 200)
+    D, I = index.search(np.expand_dims(qv, 0), 200)  # noqa: N806, E741
     d_ids, d_scores = I[0], D[0]
 
     # BM25 search
@@ -88,7 +88,7 @@ def retrieve_hybrid(
 
     # Combine results
     ids = sorted(set(d_ids.tolist()) | set(s_top.tolist()))
-    d_map = {int(i): float(s) for i, s in zip(d_ids, d_scores)}
+    d_map = {int(i): float(s) for i, s in zip(d_ids, d_scores, strict=True)}
     s_map = {int(i): float(s_scores[i]) for i in s_top}
     d_arr = np.array([d_map.get(i, 0.0) for i in ids], dtype="float32")
     s_arr = np.array([s_map.get(i, 0.0) for i in ids], dtype="float32")

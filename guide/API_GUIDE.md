@@ -15,17 +15,17 @@ WordPress RAG ChatbotのAPIエンドポイントの詳細な使用方法を説�
 
 ### 開発モード
 ```bash
-uvicorn src.api.chat_api:app --reload --port 8080
+uvicorn wp_chat.api.chat_api:app --reload --port 8080
 ```
 
 ### 本番モード
 ```bash
-uvicorn src.api.chat_api:app --host 0.0.0.0 --port 8080
+uvicorn wp_chat.api.chat_api:app --host 0.0.0.0 --port 8080
 ```
 
 ### カスタム設定
 ```bash
-uvicorn src.api.chat_api:app --reload --port 8080 --workers 4
+uvicorn wp_chat.api.chat_api:app --reload --port 8080 --workers 4
 ```
 
 ## 🔍 検索・質問エンドポイント
@@ -399,7 +399,7 @@ curl -X POST http://localhost:8080/admin/backup/create \
 | `VALIDATION_ERROR` | パラメータ不正 | リクエスト形式を確認 |
 | `RATE_LIMIT_EXCEEDED` | レート制限超過 | しばらく待ってから再試行 |
 | `OPENAI_API_ERROR` | OpenAI API エラー | APIキーとクォータを確認 |
-| `INDEX_NOT_FOUND` | インデックス未構築 | `python -m src.data.build_index` を実行 |
+| `INDEX_NOT_FOUND` | インデックス未構築 | `python -m wp_chat.data.build_index` を実行 |
 | `GENERATION_FAILED` | 生成失敗 | ログを確認して再試行 |
 
 ## 🔒 セキュリティ

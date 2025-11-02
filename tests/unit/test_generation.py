@@ -1,8 +1,8 @@
 # tests/unit/test_generation.py - Tests for generation.py
 from unittest.mock import patch
 
-from src.generation.generation import GenerationPipeline
-from src.generation.prompts import build_messages
+from wp_chat.generation.generation import GenerationPipeline
+from wp_chat.generation.prompts import build_messages
 
 
 class TestGenerationPipeline:
@@ -10,7 +10,7 @@ class TestGenerationPipeline:
 
     def test_initialization(self):
         """Test pipeline initialization"""
-        with patch("src.generation.generation.get_config_value") as mock_get:
+        with patch("wp_chat.generation.generation.get_config_value") as mock_get:
             mock_get.side_effect = lambda key, default: default
             pipeline = GenerationPipeline()
             assert pipeline.context_composer is not None
@@ -18,7 +18,7 @@ class TestGenerationPipeline:
 
     def test_process_retrieval_results(self):
         """Test retrieval results processing"""
-        with patch("src.generation.generation.get_config_value") as mock_get:
+        with patch("wp_chat.generation.generation.get_config_value") as mock_get:
             mock_get.side_effect = lambda key, default: default
             pipeline = GenerationPipeline()
 
@@ -40,7 +40,7 @@ class TestGenerationPipeline:
 
     def test_build_prompt(self):
         """Test prompt building"""
-        with patch("src.generation.generation.get_config_value") as mock_get:
+        with patch("wp_chat.generation.generation.get_config_value") as mock_get:
             mock_get.side_effect = lambda key, default: default
             pipeline = GenerationPipeline()
 
@@ -63,7 +63,7 @@ class TestGenerationPipeline:
 
     def test_post_process_response(self):
         """Test response post-processing"""
-        with patch("src.generation.generation.get_config_value") as mock_get:
+        with patch("wp_chat.generation.generation.get_config_value") as mock_get:
             mock_get.side_effect = lambda key, default: default
             pipeline = GenerationPipeline()
 
@@ -86,7 +86,7 @@ class TestGenerationPipeline:
 
     def test_generate_fallback_response(self):
         """Test fallback response generation"""
-        with patch("src.generation.generation.get_config_value") as mock_get:
+        with patch("wp_chat.generation.generation.get_config_value") as mock_get:
             mock_get.side_effect = lambda key, default: default
             pipeline = GenerationPipeline()
 

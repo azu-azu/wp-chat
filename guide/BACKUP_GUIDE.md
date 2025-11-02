@@ -231,7 +231,7 @@ pkill -f uvicorn
 python src/backup_cli.py restore <latest_index_backup>
 
 # Restart service
-uvicorn src.chat_api:app --host 0.0.0.0 --port 8080 --reload &
+uvicorn wp_chat.chat_api:app --host 0.0.0.0 --port 8080 --reload &
 ```
 
 #### 2. Cache Issues

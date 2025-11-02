@@ -105,7 +105,7 @@ python3 -m src.cli.generate_cli --interactive
 ### 2. API使用
 ```bash
 # サーバー起動
-uvicorn src.api.chat_api:app --reload --port 8080
+uvicorn wp_chat.api.chat_api:app --reload --port 8080
 
 # 生成テスト
 curl -X POST http://localhost:8080/generate \
@@ -173,7 +173,7 @@ python3 -m src.cli.generate_cli --health
 #### インデックスエラー
 ```bash
 # 解決方法
-python -m src.data.build_index
+python -m wp_chat.data.build_index
 ```
 
 ### ログ確認

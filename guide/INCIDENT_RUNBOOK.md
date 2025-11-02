@@ -37,7 +37,7 @@
 
 3. **Restart Service** (120s)
    ```bash
-   pkill -f uvicorn && sleep 5 && uvicorn src.chat_api:app --host 0.0.0.0 --port 8080 --reload &
+   pkill -f uvicorn && sleep 5 && uvicorn wp_chat.chat_api:app --host 0.0.0.0 --port 8080 --reload &
    ```
 
 **Verification:**
@@ -64,7 +64,7 @@
 
 3. **Restart Service** (120s)
    ```bash
-   pkill -f uvicorn && sleep 5 && uvicorn src.chat_api:app --host 0.0.0.0 --port 8080 --reload &
+   pkill -f uvicorn && sleep 5 && uvicorn wp_chat.chat_api:app --host 0.0.0.0 --port 8080 --reload &
    ```
 
 **Verification:**
@@ -91,7 +91,7 @@
 
 3. **Reload Model** (180s)
    ```bash
-   pkill -f uvicorn && sleep 5 && uvicorn src.chat_api:app --host 0.0.0.0 --port 8080 --reload &
+   pkill -f uvicorn && sleep 5 && uvicorn wp_chat.chat_api:app --host 0.0.0.0 --port 8080 --reload &
    ```
 
 **Verification:**
@@ -145,7 +145,7 @@
 
 3. **Restart Service** (120s)
    ```bash
-   pkill -f uvicorn && sleep 5 && uvicorn src.chat_api:app --host 0.0.0.0 --port 8080 --reload &
+   pkill -f uvicorn && sleep 5 && uvicorn wp_chat.chat_api:app --host 0.0.0.0 --port 8080 --reload &
    ```
 
 **Verification:**

@@ -10,7 +10,7 @@ class TestMinMaxNormalization:
 
     def test_minmax_basic(self):
         """Test basic min-max normalization"""
-        from src.retrieval.search_hybrid import _minmax
+        from wp_chat.retrieval.search_hybrid import _minmax
 
         arr = np.array([0.1, 0.5, 0.9])
         normalized = _minmax(arr)
@@ -24,7 +24,7 @@ class TestMinMaxNormalization:
 
     def test_minmax_all_same(self):
         """Test normalization with all same values"""
-        from src.retrieval.search_hybrid import _minmax
+        from wp_chat.retrieval.search_hybrid import _minmax
 
         arr = np.array([0.5, 0.5, 0.5])
         normalized = _minmax(arr)
@@ -36,7 +36,7 @@ class TestMinMaxNormalization:
 
     def test_minmax_single_value(self):
         """Test normalization with single value"""
-        from src.retrieval.search_hybrid import _minmax
+        from wp_chat.retrieval.search_hybrid import _minmax
 
         arr = np.array([0.7])
         normalized = _minmax(arr)
@@ -45,7 +45,7 @@ class TestMinMaxNormalization:
 
     def test_minmax_negative_values(self):
         """Test normalization with negative values"""
-        from src.retrieval.search_hybrid import _minmax
+        from wp_chat.retrieval.search_hybrid import _minmax
 
         arr = np.array([-1.0, 0.0, 1.0])
         normalized = _minmax(arr)
@@ -60,13 +60,13 @@ class TestHybridSearch:
     @pytest.fixture
     def mock_dependencies(self):
         """Mock all external dependencies"""
-        with patch("src.retrieval.search_hybrid.json.load") as mock_json, patch(
-            "src.retrieval.search_hybrid.SentenceTransformer"
-        ) as mock_st, patch("src.retrieval.search_hybrid.faiss.read_index") as mock_faiss, patch(
-            "src.retrieval.search_hybrid.joblib.load"
-        ) as mock_joblib, patch("src.retrieval.search_hybrid.load_npz") as mock_npz, patch(
-            "builtins.open", create=True
-        ):
+        with patch("wp_chat.retrieval.search_hybrid.json.load") as mock_json, patch(
+            "wp_chat.retrieval.search_hybrid.SentenceTransformer"
+        ) as mock_st, patch(
+            "wp_chat.retrieval.search_hybrid.faiss.read_index"
+        ) as mock_faiss, patch("wp_chat.retrieval.search_hybrid.joblib.load") as mock_joblib, patch(
+            "wp_chat.retrieval.search_hybrid.load_npz"
+        ) as mock_npz, patch("builtins.open", create=True):
             # Mock metadata
             mock_json.return_value = [
                 {
@@ -114,7 +114,7 @@ class TestHybridSearch:
 
     def test_hybrid_search_returns_candidates(self, mock_dependencies):
         """Test that hybrid_search returns Candidate objects"""
-        from src.retrieval.search_hybrid import hybrid_search
+        from wp_chat.retrieval.search_hybrid import hybrid_search
 
         # This test requires actual files, so it may fail
         # Just test that the function exists and has correct signature
@@ -128,7 +128,7 @@ class TestHybridSearch:
 
     def test_hybrid_search_parameters(self):
         """Test hybrid_search parameter validation"""
-        from src.retrieval.search_hybrid import hybrid_search
+        from wp_chat.retrieval.search_hybrid import hybrid_search
 
         # Test that function accepts expected parameters
         try:
@@ -145,7 +145,7 @@ class TestHybridSearchIntegration:
     @pytest.mark.skipif(True, reason="Requires actual FAISS index and metadata files")
     def test_hybrid_search_with_real_data(self):
         """Test hybrid search with real data (skip if not available)"""
-        from src.retrieval.search_hybrid import hybrid_search
+        from wp_chat.retrieval.search_hybrid import hybrid_search
 
         results = hybrid_search("VBA 文字列", k_bm25=10, k_dense=10, alpha=0.6)
 
@@ -157,7 +157,7 @@ class TestHybridSearchIntegration:
     @pytest.mark.skipif(True, reason="Requires actual FAISS index and metadata files")
     def test_hybrid_search_score_combination(self):
         """Test that dense and BM25 scores are properly combined"""
-        from src.retrieval.search_hybrid import hybrid_search
+        from wp_chat.retrieval.search_hybrid import hybrid_search
 
         # Test with different alpha values
         results_dense_heavy = hybrid_search("test", alpha=0.9)  # Favor dense

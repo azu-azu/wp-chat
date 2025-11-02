@@ -31,7 +31,7 @@ def test_config():
     print("\n🔧 Testing configuration...")
 
     try:
-        from src.config import get_config_value
+        from wp_chat.config import get_config_value
 
         # Test LLM config
         provider = get_config_value("llm.provider")
@@ -60,7 +60,7 @@ def test_prompt_building():
     print("\n💬 Testing prompt building...")
 
     try:
-        from src.prompts import build_messages, validate_citations
+        from wp_chat.prompts import build_messages, validate_citations
 
         # Mock documents
         docs = [
@@ -102,7 +102,7 @@ def test_context_composition():
     print("\n📝 Testing context composition...")
 
     try:
-        from src.generation import generation_pipeline
+        from wp_chat.generation import generation_pipeline
 
         # Mock documents
         docs = [
@@ -143,7 +143,7 @@ def test_openai_client_init():
     print("\n🤖 Testing OpenAI client...")
 
     try:
-        from src.openai_client import openai_client
+        from wp_chat.openai_client import openai_client
 
         # Test model info
         model_info = openai_client.get_model_info()

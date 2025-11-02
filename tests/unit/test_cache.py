@@ -4,7 +4,7 @@ import time
 
 import pytest
 
-from src.core.cache import CacheManager
+from wp_chat.core.cache import CacheManager
 
 
 @pytest.mark.unit

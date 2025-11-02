@@ -11,8 +11,8 @@ class TestGenerationPipeline:
 
     def test_imports(self):
         """Test that all modules can be imported"""
-        from src.core import config
-        from src.generation import generation, openai_client, prompts
+        from wp_chat.core import config
+        from wp_chat.generation import generation, openai_client, prompts
 
         assert generation is not None
         assert prompts is not None
@@ -21,7 +21,7 @@ class TestGenerationPipeline:
 
     def test_config_loading(self):
         """Test configuration loading"""
-        from src.core.config import get_config_value
+        from wp_chat.core.config import get_config_value
 
         # Test LLM config
         provider = get_config_value("llm.provider")
@@ -41,7 +41,7 @@ class TestGenerationPipeline:
 
     def test_prompt_building(self, sample_documents):
         """Test prompt building"""
-        from src.generation.prompts import build_messages, validate_citations
+        from wp_chat.generation.prompts import build_messages, validate_citations
 
         # Build messages
         messages = build_messages("What is the main topic?", sample_documents)
@@ -62,7 +62,7 @@ class TestGenerationPipeline:
 
     def test_context_composition(self, sample_search_results):
         """Test context composition"""
-        from src.generation.generation import ContextComposer
+        from wp_chat.generation.generation import ContextComposer
 
         composer = ContextComposer()
 
@@ -77,8 +77,8 @@ class TestGenerationPipeline:
 
     def test_openai_client_initialization(self):
         """Test OpenAI client initialization"""
-        from src.core.config import get_config_value
-        from src.generation.openai_client import OpenAIClient
+        from wp_chat.core.config import get_config_value
+        from wp_chat.generation.openai_client import OpenAIClient
 
         # Get model alias
         alias = get_config_value("llm.alias", "default-mini")
@@ -107,8 +107,8 @@ class TestGenerationPipeline:
     @pytest.mark.slow
     def test_full_generation_pipeline(self, sample_search_results, mock_openai_client):
         """Test full generation pipeline (mocked OpenAI)"""
-        from src.generation.generation import ContextComposer
-        from src.generation.prompts import build_messages, format_references
+        from wp_chat.generation.generation import ContextComposer
+        from wp_chat.generation.prompts import build_messages, format_references
 
         # Prepare context
         composer = ContextComposer()
@@ -136,8 +136,8 @@ class TestRetrievalIntegration:
 
     def test_search_to_generation_flow(self, sample_search_results):
         """Test search results flowing into generation"""
-        from src.generation.generation import ContextComposer
-        from src.generation.prompts import build_messages
+        from wp_chat.generation.generation import ContextComposer
+        from wp_chat.generation.prompts import build_messages
 
         # Simulate retrieval results
         results = sample_search_results

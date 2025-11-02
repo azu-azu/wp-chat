@@ -256,7 +256,7 @@ FileNotFoundError: data/index/wp.faiss
 **解決方法:**
 ```bash
 # インデックスを再構築
-python -m src.data.build_index
+python -m wp_chat.data.build_index
 ```
 
 #### 4. ポート競合
@@ -271,7 +271,7 @@ OSError: [Errno 48] Address already in use
 pkill -f uvicorn
 
 # 新しいサーバーを起動
-uvicorn src.api.chat_api:app --reload --port 8080
+uvicorn wp_chat.api.chat_api:app --reload --port 8080
 ```
 
 #### 5. 依存関係エラー
@@ -298,7 +298,7 @@ python3 -m src.cli.generate_cli --health
 #### 2. 設定確認
 ```bash
 # 設定ファイルの内容確認
-python3 -c "from src.core.config import load_config; import json; print(json.dumps(load_config(), indent=2))"
+python3 -c "from wp_chat.core.config import load_config; import json; print(json.dumps(load_config(), indent=2))"
 ```
 
 #### 3. インデックス状態確認

@@ -6,7 +6,7 @@ from fastapi.testclient import TestClient
 @pytest.fixture(scope="module")
 def client():
     """Create test client for E2E tests"""
-    from src.api.chat_api import app
+    from wp_chat.api.chat_api import app
 
     return TestClient(app)
 
