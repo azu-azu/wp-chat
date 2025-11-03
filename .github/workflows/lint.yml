@@ -34,13 +34,13 @@ jobs:
 
       - name: Run ruff check
         run: |
-          ruff check src/ tests/ --output-format=github
+          ruff check wp_chat/ tests/ --output-format=github
 
       - name: Run ruff format check
         run: |
-          ruff format --check src/ tests/
+          ruff format --check wp_chat/ tests/
 
       - name: Run mypy
         run: |
-          mypy src/
+          mypy wp_chat/
         continue-on-error: true  # 段階的に厳格化するため、最初は失敗を許容
