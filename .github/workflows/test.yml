@@ -38,11 +38,11 @@ jobs:
 
       - name: Run unit tests
         run: |
-          pytest tests/unit/ -v --cov=src --cov-report=term-missing
+          pytest tests/unit/ -v --cov=wp_chat --cov-report=term-missing
 
       - name: Run integration tests
         run: |
-          pytest tests/integration/ -v --cov=src --cov-append --cov-report=xml
+          pytest tests/integration/ -v --cov=wp_chat --cov-append --cov-report=xml
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY || 'sk-test-dummy-key' }}
           API_KEY_REQUIRED: 'false'
