@@ -489,30 +489,6 @@ MIT License - see LICENSE file for details.
 - **[⚙️ 設定ファイル](config.yml)** - アプリケーション設定
 - **[💰 価格設定](pricing.json)** - LLMモデルの価格情報
 
-## 📋 Planning Documents
-
-### 🎉 Recently Completed
-- **[📦 API Refactoring Plan (2025-11-02)](plans/2025-11-02-api-refactoring-plan.md)** - Clean Architecture complete
-  - **Status:** ✅ All Phases (1-3) Completed
-  - **Achievements:**
-    - **Phase 1:** main.py (旧chat_api.py): 1,109行 → 87行 (92%削減)
-    - **Phase 2:** Service層: SearchService, GenerationService, CacheService 作成
-    - **Phase 3:** Domain層: Models, Value Objects, Repository interfaces 作成
-    - **Result:** Clean Architecture完成（Presentation → Application → Domain層の依存関係確立）
-  - **Next:** Unit testing, performance testing
-
-### ✅ Completed Plans
-- **[🔧 Improvement Plan (2025-11-01)](plans/completed/04_2025-11-01-improvement-plan.md)** - TOP8 stability improvements
-  - ✅ Test infrastructure setup
-  - ✅ Structured logging
-  - ✅ Exception class hierarchy
-  - ✅ CI/CD pipeline (basic)
-  - ✅ Type checking with mypy
-- **[🎯 RAG Implementation (2025-10-24)](plans/completed/03_2025-10-24_rag.md)** - MVP4 RAG generation
-- **[📊 MVP Consolidation (2025-10-18)](plans/completed/02_2025-10-18_mvp_matome.md)** - Feature consolidation
-- **[🚀 MVP1 (2025-10-16)](plans/completed/01_2025-10-16_mvp1.md)** - Initial implementation
-
-See [plans/README.md](plans/README.md) for planning workflow and archive.
 
 ## 📞 Support
 
