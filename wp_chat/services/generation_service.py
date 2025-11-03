@@ -9,6 +9,8 @@ This service handles:
 
 from typing import Any
 
+from ..domain.models import Document
+
 
 class GenerationService:
     """Service for handling RAG generation operations"""
@@ -109,3 +111,34 @@ class GenerationService:
             Tuple of (documents, rerank_status)
         """
         return self.convert_hits_to_documents(search_results, question)
+
+    def prepare_from_domain_documents(self, documents: list[Document]) -> list[dict[str, Any]]:
+        """
+        Convert domain Document objects to generation-ready format.
+
+        Args:
+            documents: List of Document domain objects
+
+        Returns:
+            List of document dictionaries for generation pipeline
+        """
+        result = []
+        for doc in documents:
+            doc_dict = {
+                "rank": doc.rank,
+                "hybrid_score": doc.hybrid_score,
+                "post_id": doc.post_id,
+                "chunk_id": doc.chunk_id,
+                "title": doc.title,
+                "url": doc.url,
+                "snippet": doc.create_snippet(),
+                "chunk": doc.chunk,
+            }
+
+            # Add ce_score if available
+            if doc.ce_score is not None:
+                doc_dict["ce_score"] = doc.ce_score
+
+            result.append(doc_dict)
+
+        return result

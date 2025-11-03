@@ -132,33 +132,23 @@ def search(
         search_result = search_service.execute_search(
             query=q, topk=topk, mode=mode, rerank=final_rerank
         )
-        hits = search_result.results
         rerank_status = search_result.rerank_enabled
 
+        # Convert documents to output format
         out = []
-        for rank, hit in enumerate(hits, 1):
-            if len(hit) == 3:  # (idx, hybrid_score, ce_score)
-                idx, hybrid_sc, ce_sc = hit
-            else:  # (idx, score) - backward compatibility
-                idx, hybrid_sc = hit
-                ce_sc = None
-
-            if idx < 0 or idx >= len(meta):
-                continue
-            m = meta[idx]
-
+        for doc in search_result.documents:
             result_item = {
-                "rank": rank,
-                "hybrid_score": hybrid_sc,
-                "post_id": m["post_id"],
-                "chunk_id": m["chunk_id"],
-                "title": m["title"],
-                "url": m["url"],
+                "rank": doc.rank,
+                "hybrid_score": doc.hybrid_score,
+                "post_id": doc.post_id,
+                "chunk_id": doc.chunk_id,
+                "title": doc.title,
+                "url": doc.url,
             }
 
             # Add ce_score if available (for A/B analysis)
-            if ce_sc is not None:
-                result_item["ce_score"] = ce_sc
+            if doc.ce_score is not None:
+                result_item["ce_score"] = doc.ce_score
 
             out.append(result_item)
 
@@ -236,37 +226,24 @@ def ask(req: AskRequest, api_key: str = Depends(get_api_key)):
     search_result = search_service.execute_search(
         query=q, topk=req.topk, mode=mode, rerank=req.rerank
     )
-    pairs = search_result.results
     rerank_status = search_result.rerank_enabled
 
-    # Convert results to output format
+    # Convert documents to output format
     hits = []
-    for rank, hit in enumerate(pairs, 1):
-        if len(hit) == 3:  # (idx, hybrid_score, ce_score)
-            idx, hybrid_sc, ce_sc = hit
-        else:  # (idx, score) - backward compatibility
-            idx, hybrid_sc = hit
-            ce_sc = None
-
-        if idx < 0 or idx >= len(meta):
-            continue
-        m = meta[idx]
-        chunk = m["chunk"]
-        snip = chunk[:400] + ("…" if len(chunk) > 400 else "")
-
+    for doc in search_result.documents:
         hit_item = {
-            "rank": rank,
-            "hybrid_score": hybrid_sc,
-            "post_id": m["post_id"],
-            "chunk_id": m["chunk_id"],
-            "title": m["title"],
-            "url": m["url"],
-            "snippet": snip,
+            "rank": doc.rank,
+            "hybrid_score": doc.hybrid_score,
+            "post_id": doc.post_id,
+            "chunk_id": doc.chunk_id,
+            "title": doc.title,
+            "url": doc.url,
+            "snippet": doc.create_snippet(400),
         }
 
         # Add ce_score if available (for A/B analysis)
-        if ce_sc is not None:
-            hit_item["ce_score"] = ce_sc
+        if doc.ce_score is not None:
+            hit_item["ce_score"] = doc.ce_score
 
         hits.append(hit_item)
 
@@ -332,11 +309,10 @@ async def generate(
         search_result = search_service.execute_search(
             query=req.question, topk=req.topk, mode=req.mode, rerank=final_rerank
         )
-        hits = search_result.results
         rerank_status = search_result.rerank_enabled
 
-        # Convert hits to document format (using GenerationService)
-        docs, _ = generation_service.convert_hits_to_documents(hits, req.question)
+        # Convert domain documents to generation format (using GenerationService)
+        docs = generation_service.prepare_from_domain_documents(search_result.documents)
 
         # Process context and build prompt
         processed_docs, context_metadata = generation_pipeline.process_retrieval_results(docs)
