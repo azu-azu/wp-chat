@@ -37,6 +37,7 @@ python -m wp_chat.cli.generate_cli --interactive
 - **SLO Monitoring**: Performance metrics and alerting
 - **Canary Deployment**: Gradual feature rollout
 - **CLI Tools**: Interactive testing and management
+- **Comprehensive Testing**: 251 unit tests with 93% coverage (Clean Architecture)
 
 ## 🏗️ Architecture
 
@@ -112,7 +113,12 @@ wp-chat/
 ├── wp_chat/            # Main application package (see above)
 ├── guide/              # 📚 User guides and documentation
 ├── plans/              # 📋 Implementation planning documents
-├── tests/              # 🧪 Test suite
+├── tests/              # 🧪 Test suite (251 tests, 93% coverage)
+│   ├── unit/          # Unit tests
+│   │   ├── domain/    # Domain layer tests (163 tests, 100% coverage)
+│   │   └── services/  # Service layer tests (88 tests, 94-100% coverage)
+│   ├── integration/   # Integration tests
+│   └── e2e/           # End-to-end tests
 ├── backups/            # 💾 Automatic backups
 ├── cache/              # 🚀 API response cache
 ├── logs/               # 📊 Application logs
@@ -331,9 +337,63 @@ api:
 
 ## 🧪 Testing
 
-### Quick Test
+### Unit Tests (251 tests, 93% coverage ✅)
+
+The project has comprehensive unit test coverage for Domain and Service layers following Clean Architecture principles.
+
+#### Running Tests
 ```bash
-# Test all major components
+# Run all unit tests
+pytest tests/unit/ -v
+
+# Run specific layer
+pytest tests/unit/domain/ -v      # Domain layer (163 tests)
+pytest tests/unit/services/ -v    # Service layer (88 tests)
+
+# Run with coverage report
+pytest tests/unit/domain/ tests/unit/services/ \
+  --cov=wp_chat/domain \
+  --cov=wp_chat/services \
+  --cov-report=term-missing \
+  --cov-report=html
+
+# View HTML coverage report
+open htmlcov/index.html
+```
+
+#### Test Coverage by Layer
+| Layer | Coverage | Tests | Status |
+|-------|----------|-------|--------|
+| **Domain Models** | 100% | 108 | ✅ |
+| **Value Objects** | 100% | 55 | ✅ |
+| **Services** | 94-100% | 88 | ✅ |
+| **Overall** | **93%** | **251** | ✅ |
+
+#### Test Organization
+```
+tests/unit/
+├── domain/                # Domain layer tests (163 tests)
+│   ├── test_query.py     # Query value object (22 tests)
+│   ├── test_score.py     # Score value object (33 tests)
+│   ├── test_document.py  # Document model (23 tests)
+│   ├── test_search_result.py    # SearchResult model (33 tests)
+│   └── test_generation_result.py # GenerationResult model (52 tests)
+└── services/              # Service layer tests (88 tests)
+    ├── test_search_service.py      # SearchService (27 tests)
+    ├── test_generation_service.py  # GenerationService (32 tests)
+    └── test_cache_service.py       # CacheService (29 tests)
+```
+
+#### What's Tested
+- ✅ **Domain Models**: Document, SearchResult, GenerationResult
+- ✅ **Value Objects**: Query validation, Score calculations
+- ✅ **Services**: Search, Generation, Cache operations
+- ✅ **Edge Cases**: Unicode, empty values, boundary conditions
+- ✅ **Business Logic**: Relevance scoring, snippet creation, cache key generation
+
+### Integration Testing
+```bash
+# Quick integration test
 python3 test_mvp4.py
 ```
 
@@ -456,7 +516,7 @@ tail -f logs/error.log
 ### Adding New Features
 1. Create feature branch
 2. Implement in appropriate module
-3. Add tests
+3. **Add tests** (maintain 80%+ coverage)
 4. Update documentation
 5. Submit PR
 
@@ -464,7 +524,40 @@ tail -f logs/error.log
 - Follow PEP 8
 - Use type hints
 - Add docstrings
-- Write tests
+- Write tests for all new code
+
+### Testing Guidelines
+```bash
+# Before committing, run tests
+pytest tests/unit/ -v
+
+# Check test coverage
+pytest tests/unit/ --cov=wp_chat --cov-report=term-missing
+
+# Ensure coverage stays above 80%
+pytest tests/unit/domain/ tests/unit/services/ \
+  --cov=wp_chat/domain \
+  --cov=wp_chat/services \
+  --cov-report=html
+
+# Pre-commit hooks will check:
+# - ruff (linting)
+# - ruff-format (formatting)
+# - mypy (type checking)
+```
+
+### Test-Driven Development (TDD)
+1. **Write tests first** for new features
+2. **Run tests** to see them fail
+3. **Implement** the feature
+4. **Run tests** to see them pass
+5. **Refactor** while keeping tests green
+
+### Test Structure
+- **Domain Layer**: Test business logic in isolation
+- **Service Layer**: Test with mocked dependencies
+- **Integration**: Test component interactions
+- **E2E**: Test full user workflows
 
 ## 📄 License
 
