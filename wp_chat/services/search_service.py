@@ -11,6 +11,8 @@ This service handles all search operations including:
 import numpy as np
 from fastapi import HTTPException
 
+from ..domain.models import SearchResult
+from ..domain.value_objects import Query
 from ..retrieval.rerank import (
     Candidate,
     CrossEncoderReranker,
@@ -18,22 +20,6 @@ from ..retrieval.rerank import (
     mmr_diversify,
     rerank_with_ce,
 )
-
-
-class SearchResult:
-    """Search result data class"""
-
-    def __init__(
-        self,
-        query: str,
-        mode: str,
-        rerank_enabled: bool,
-        results: list[tuple[int, float, float | None]],
-    ):
-        self.query = query
-        self.mode = mode
-        self.rerank_enabled = rerank_enabled
-        self.results = results  # List of (idx, hybrid_score, ce_score)
 
 
 class SearchService:
@@ -202,27 +188,42 @@ class SearchService:
             rerank: Whether to use reranking (only for hybrid mode)
 
         Returns:
-            SearchResult object containing search results
+            SearchResult domain object containing documents
 
         Raises:
             ValueError: If invalid mode is specified
         """
+        # Validate and normalize query
+        try:
+            query_obj = Query.from_string(query)
+        except ValueError as e:
+            raise HTTPException(400, str(e)) from e
+
         if mode == "dense":
-            hits = self.search_dense(query, topk)
+            hits = self.search_dense(str(query_obj), topk)
             # Convert to (idx, score, None) format
             results = [(idx, score, None) for idx, score in hits]
             rerank_status = False
 
         elif mode == "bm25":
-            hits = self.search_bm25(query, topk)
+            hits = self.search_bm25(str(query_obj), topk)
             # Convert to (idx, score, None) format
             results = [(idx, score, None) for idx, score in hits]
             rerank_status = False
 
         elif mode == "hybrid":
-            results, rerank_status = self.search_hybrid_with_rerank(query, topk, rerank=rerank)
+            results, rerank_status = self.search_hybrid_with_rerank(
+                str(query_obj), topk, rerank=rerank
+            )
 
         else:
             raise ValueError(f"Invalid search mode: {mode}")
 
-        return SearchResult(query=query, mode=mode, rerank_enabled=rerank_status, results=results)
+        # Convert to domain SearchResult with Document objects
+        return SearchResult.from_tuples(
+            query=str(query_obj),
+            mode=mode,
+            results=results,
+            meta=self.meta,
+            rerank_enabled=rerank_status,
+        )

@@ -42,7 +42,7 @@ python -m wp_chat.cli.generate_cli --interactive
 
 ```
 wp_chat/                    # Main application package
-├── api/                    # FastAPI endpoints
+├── api/                    # Presentation Layer - FastAPI endpoints
 │   ├── main.py            # Main FastAPI app (entry point)
 │   ├── models.py          # Pydantic request/response models
 │   └── routers/           # Modular endpoint routers
@@ -52,10 +52,21 @@ wp_chat/                    # Main application package
 │       ├── admin_incidents.py # /admin/incidents/*
 │       ├── admin_backup.py    # /admin/backup/*
 │       └── admin_cache.py     # /admin/cache/*
-├── services/               # Business logic layer (Phase 2)
+├── services/               # Application Layer - Business logic
 │   ├── search_service.py  # Search operations
 │   ├── generation_service.py  # RAG generation
 │   └── cache_service.py   # Cache management
+├── domain/                 # Domain Layer - Business models (Phase 3)
+│   ├── models/            # Domain entities
+│   │   ├── document.py    # Document model
+│   │   ├── search_result.py   # Search result model
+│   │   └── generation_result.py # Generation result model
+│   ├── repositories/      # Repository interfaces
+│   │   ├── search_repository.py   # Search repository interface
+│   │   └── cache_repository.py    # Cache repository interface
+│   └── value_objects/     # Value objects
+│       ├── query.py       # Query value object
+│       └── score.py       # Score value object
 ├── cli/                    # Command-line tools
 │   ├── generate_cli.py    # RAG generation testing
 │   ├── backup_cli.py      # Backup management
@@ -480,14 +491,15 @@ MIT License - see LICENSE file for details.
 
 ## 📋 Planning Documents
 
-### 🚧 Active Plans
-- **[📦 API Refactoring Plan (2025-11-02)](plans/2025-11-02-api-refactoring-plan.md)** - Modular architecture with service layer
-  - **Status:** ✅ Phase 1-2 Completed (Router + Service layer)
+### 🎉 Recently Completed
+- **[📦 API Refactoring Plan (2025-11-02)](plans/2025-11-02-api-refactoring-plan.md)** - Clean Architecture complete
+  - **Status:** ✅ All Phases (1-3) Completed
   - **Achievements:**
-    - main.py (旧chat_api.py): 1,109行 → 87行 (92%削減)
-    - chat.py router: 631行 → 512行 (19%削減)
-    - Service層: SearchService, GenerationService, CacheService 作成
-  - **Next:** Phase 3 - Domain layer (optional)
+    - **Phase 1:** main.py (旧chat_api.py): 1,109行 → 87行 (92%削減)
+    - **Phase 2:** Service層: SearchService, GenerationService, CacheService 作成
+    - **Phase 3:** Domain層: Models, Value Objects, Repository interfaces 作成
+    - **Result:** Clean Architecture完成（Presentation → Application → Domain層の依存関係確立）
+  - **Next:** Unit testing, performance testing
 
 ### ✅ Completed Plans
 - **[🔧 Improvement Plan (2025-11-01)](plans/completed/04_2025-11-01-improvement-plan.md)** - TOP8 stability improvements
